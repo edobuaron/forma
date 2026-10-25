@@ -65,7 +65,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         ].map((s) => (
           <Card key={s.label} className="p-4">
             <s.icon className="mb-2 size-4 text-muted-foreground" />
-            <p className="text-[20px] font-semibold tabular tracking-tight">{s.value}</p>
+            <p className="whitespace-nowrap text-[17px] font-semibold tabular tracking-tight sm:text-[20px]">{s.value}</p>
             <p className="text-[12px] text-muted-foreground">{s.label}</p>
           </Card>
         ))}
@@ -105,7 +105,10 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
             <div className="mb-2 flex items-center justify-between gap-3">
               <Link href={`/exercises/${r.e.exercise_id}`} className="text-[15px] font-semibold tracking-tight hover:underline">{r.e.exercise.name}</Link>
               {r.hasPrev ? (
-                r.improved > 0 && r.below === 0 ? <Badge tone="positive">Improved</Badge> : r.below > 0 && r.improved === 0 ? <Badge tone="negative">Below last</Badge> : r.improved === 0 && r.below === 0 ? <Badge>Matched</Badge> : <Badge>Mixed</Badge>
+                r.improved > 0 && r.below === 0 ? <Badge tone="positive">Improved</Badge>
+                  : r.below > 0 && r.improved === 0 ? <Badge tone="negative">Below last</Badge>
+                  : r.improved === 0 && r.below === 0 ? (r.cmps.some((c) => c.loadDeltaKg > 0) ? <Badge tone="accent">New load</Badge> : <Badge>Matched</Badge>)
+                  : <Badge>Mixed</Badge>
               ) : <Badge tone="outline">First session</Badge>}
             </div>
             <div className="space-y-1">

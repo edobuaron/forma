@@ -49,7 +49,7 @@ export function comparisonText(c: SetComparison, unit: WeightUnit, loadType: Loa
     case "no_previous":
       return null;
     case "matched":
-      return c.basis === "e1rm" ? { text: `${load(c.loadDeltaKg)} · similar strength`, tone: "neutral" } : { text: "Matched", tone: "neutral" };
+      return c.basis === "e1rm" ? { text: "Similar strength (est.)", tone: "neutral" } : { text: "Matched", tone: "neutral" };
     case "not_comparable":
       return { text: `${c.loadDeltaKg > 0 ? (loadType === "assisted" ? "Less assistance" : "Heavier") : loadType === "assisted" ? "More assistance" : "Lighter"} · new baseline`, tone: "neutral" };
     case "improved":
@@ -57,7 +57,7 @@ export function comparisonText(c: SetComparison, unit: WeightUnit, loadType: Loa
       const tone = c.status === "improved" ? "positive" : "negative";
       if (c.basis === "same_load") return { text: reps(c.repDelta), tone };
       if (c.basis === "same_reps") return { text: load(c.loadDeltaKg), tone };
-      if (c.basis === "e1rm") return { text: `${load(c.loadDeltaKg)} · stronger`, tone };
+      if (c.basis === "e1rm") return { text: "Stronger (est. 1RM)", tone };
       return { text: `${load(c.loadDeltaKg)}, ${reps(c.repDelta)}`, tone };
     }
   }
