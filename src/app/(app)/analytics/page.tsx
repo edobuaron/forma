@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/ui/misc";
 import { MUSCLE_LABELS, sessionPoints, TIMEFRAMES, timeframeStart, weekStart, weeklySetsPerMuscle, type TimeframeKey } from "@/lib/domain/analytics";
 import { formatWeight, kgToDisplay } from "@/lib/domain/units";
-import { completedSetHistory, getActiveProgram, getProfile, groupHistory, listExercises, listMeasurements, listSessionDates } from "@/lib/data/queries";
+import { completedSetHistory, getProfile, groupHistory, listExercises, listMeasurements, listSessionDates } from "@/lib/data/queries";
 import { toExerciseConfig } from "@/lib/data/types";
 import { requireUser } from "@/lib/supabase/server";
 
@@ -18,9 +18,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const tf = (TIMEFRAMES.find((t) => t.key === sp.tf)?.key ?? "3m") as TimeframeKey;
   const start = timeframeStart(tf);
   const { supabase } = await requireUser();
-  const [profile, exercises, rows, sessionsAll, program, measurements] = await Promise.all([
+  const [profile, exercises, rows, sessionsAll, measurements] = await Promise.all([
     getProfile(supabase), listExercises(supabase, { includeArchived: true }), completedSetHistory(supabase, { since: start?.toISOString() ?? null }),
-    listSessionDates(supabase), getActiveProgram(supabase), listMeasurements(supabase),
+    listSessionDates(supabase), listMeasurements(supabase),
   ]);
   const unit = profile.unit;
   const exById = new Map(exercises.map((e) => [e.id, e]));
@@ -60,10 +60,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   for (const m of muscleWeeks.values()) for (const [k, v] of m) muscleTotals.set(k, (muscleTotals.get(k) ?? 0) + v);
   const muscleAvg = [...muscleTotals.entries()].map(([k, v]) => ({ label: MUSCLE_LABELS[k] ?? k, value: Math.round((v / nWeeks) * 10) / 10 })).sort((a, b) => b.value - a.value);
 
-  // Consistency
-  const scheduledPerWeek = (program?.templates ?? []).filter((t) => t.day_of_week != null).length;
+  // Consistency: average over complete weeks since the first workout in range
   const completeWeeks = weeks.slice(0, -1);
-  const adherence = scheduledPerWeek && completeWeeks.length ? Math.min(100, Math.round((completeWeeks.reduce((a, w) => a + Math.min(scheduledPerWeek, perWeek.get(w) ?? 0), 0) / (completeWeeks.length * scheduledPerWeek)) * 100)) : null;
+  const avgPerWeek = completeWeeks.length ? completeWeeks.reduce((a, w) => a + (perWeek.get(w) ?? 0), 0) / completeWeeks.length : null;
 
   // Monthly (last 12) & yearly
   const months: string[] = [];
@@ -106,7 +105,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             <CardContent><Bars height={200} suffix={` ${unit}`} data={weeks.map((w) => ({ x: wkLabel(w), y: Math.round(kgToDisplay(vol.get(w) ?? 0, unit)), title: `Week of ${wkLabel(w)}`, detail: `${sets.get(w) ?? 0} working sets` }))} /></CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle>Workouts per week</CardTitle>{adherence != null && <span className="text-[12px] text-muted-foreground tabular">{adherence}% of scheduled</span>}</CardHeader>
+            <CardHeader><CardTitle>Workouts per week</CardTitle>{avgPerWeek != null && <span className="text-[12px] text-muted-foreground tabular">{avgPerWeek.toFixed(1)} per week on average</span>}</CardHeader>
             <CardContent><Bars height={200} suffix=" workouts" data={weeks.map((w) => ({ x: wkLabel(w), y: perWeek.get(w) ?? 0, title: `Week of ${wkLabel(w)}` }))} /></CardContent>
           </Card>
         </div>

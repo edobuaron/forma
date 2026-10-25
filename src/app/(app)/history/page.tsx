@@ -3,11 +3,12 @@ import {
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { MonthCalendar } from "@/components/history/month-calendar";
 import { Card } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/ui/misc";
-import { getActiveProgram, listSessions } from "@/lib/data/queries";
+import { getActiveProgram, listSessions, toDayWorkout, toStartTemplates } from "@/lib/data/queries";
 import { requireUser } from "@/lib/supabase/server";
-import { cn, formatMinutes } from "@/lib/utils";
+import { formatMinutes } from "@/lib/utils";
 
 export const metadata = { title: "History" };
 
@@ -23,11 +24,18 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
     getActiveProgram(supabase),
     listSessions(supabase, { limit: 60 }),
   ]);
-  const scheduled = new Map((program?.templates ?? []).filter((t) => t.day_of_week != null).map((t) => [t.day_of_week!, t.name]));
-  const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
   const monthSessions = sessions.filter((s) => isSameMonth(new Date(s.started_at), month));
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const firstSession = all.length ? new Date(all[all.length - 1].started_at) : null;
+  const todayKey = format(today, "yyyy-MM-dd");
+  const days = eachDayOfInterval({ start: gridStart, end: gridEnd }).map((d) => {
+    const key = format(d, "yyyy-MM-dd");
+    return {
+      key,
+      inMonth: isSameMonth(d, month),
+      isToday: key === todayKey,
+      isFuture: key > todayKey,
+      workouts: sessions.filter((s) => format(new Date(s.started_at), "yyyy-MM-dd") === key).reverse().map(toDayWorkout),
+    };
+  });
 
   const byMonth = new Map<string, typeof all>();
   for (const s of all) {
@@ -47,46 +55,11 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
             <Link aria-label="Next month" href={`/history?m=${format(addMonths(month, 1), "yyyy-MM")}`} className="grid size-9 place-items-center rounded-full hover:bg-muted"><ChevronRight className="size-4" /></Link>
           </div>
         </div>
-        <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-muted-foreground">
-          {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <div key={i} className="pb-2">{d}</div>)}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((d) => {
-            const ds = sessions.filter((s) => new Date(s.started_at).toDateString() === d.toDateString());
-            const tpl = scheduled.get(d.getDay());
-            const inMonth = isSameMonth(d, month);
-            const past = d < todayStart;
-            const missed = !!tpl && past && ds.length === 0 && (!firstSession || d >= firstSession);
-            const isToday = d.toDateString() === today.toDateString();
-            const content = (
-              <div
-                className={cn(
-                  "relative flex aspect-square flex-col items-center justify-center rounded-md text-[13px] tabular transition-colors md:aspect-[1.5]",
-                  !inMonth && "opacity-35",
-                  ds.length > 0 && "bg-accent-soft font-semibold text-accent hover:bg-accent/15",
-                  ds.length === 0 && tpl && !past && "border text-foreground",
-                  missed && "border border-dashed text-muted-foreground",
-                  ds.length === 0 && !tpl && "text-muted-foreground",
-                  isToday && "ring-2 ring-accent/60",
-                )}
-              >
-                <span>{d.getDate()}</span>
-                <span className={cn("hidden max-w-full truncate px-1 text-[10.5px] font-normal md:block", ds.length === 0 && "text-muted-foreground")}>{ds[0]?.name ?? (tpl && !past ? tpl : missed ? "Skipped" : "")}</span>
-                {ds.length > 0 && <span className="absolute bottom-1.5 size-1 rounded-full bg-accent md:hidden" />}
-              </div>
-            );
-            return ds.length ? <Link key={d.toISOString()} href={`/history/${ds[0].id}`}>{content}</Link> : <div key={d.toISOString()}>{content}</div>;
-          })}
-        </div>
-        <div className="mt-4 flex flex-wrap gap-4 text-[12px] text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="size-3 rounded-[4px] bg-accent-soft ring-1 ring-accent/30" /> Completed</span>
-          <span className="flex items-center gap-1.5"><span className="size-3 rounded-[4px] border" /> Scheduled</span>
-          <span className="flex items-center gap-1.5"><span className="size-3 rounded-[4px] border border-dashed border-muted-foreground" /> Skipped</span>
-        </div>
+        <MonthCalendar days={days} templates={toStartTemplates(program?.templates ?? [], all)} />
       </Card>
 
       {all.length === 0 ? (
-        <EmptyState title="No completed workouts yet">Finished workouts appear here. You can open any of them to correct mistakes.</EmptyState>
+        <EmptyState title="No completed workouts yet">Finished workouts appear here. Tap a day above to log one, or open any of them later to correct mistakes.</EmptyState>
       ) : (
         <div className="space-y-6">
           {[...byMonth.entries()].map(([m, list]) => (

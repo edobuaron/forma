@@ -37,14 +37,14 @@ Mobile: bottom tab bar (Today · Workout · History · Progress · More). Deskto
 | Route | Purpose |
 |---|---|
 | `/` | Dashboard: next workout, week strip, quick start, weekly completion & volume, recent PRs, trends, recommendations |
-| `/workout` | Start a workout (from schedule, any template, or empty) or resume one in progress |
+| `/workout` | Start any workout (any template, or empty) or resume one in progress. Workouts aren't tied to weekdays; the dashboard week strip and the History calendar open a day sheet for logging on a past day. |
 | `/workout/[id]` | **Active workout** — the core screen |
 | `/workout/[id]/summary` | Post-workout summary |
 | `/history` | Calendar + list of sessions |
 | `/history/[id]` | Session detail, editable to correct mistakes |
 | `/exercises` | Exercise library |
 | `/exercises/[id]` | Exercise progress page: chart, bests, PRs, history, recommendation |
-| `/programs` | Programs; `/programs/[id]` edit templates, schedule, exercises |
+| `/programs` | Programs; `/programs/[id]` edit templates and exercises |
 | `/analytics` | Charts across exercises, volume, muscle-group sets, consistency, body |
 | `/body` | Body measurements |
 | `/settings` | Theme, units, rest defaults, timer, progression prefs, export |
@@ -66,7 +66,7 @@ All ids are `uuid`. All rows carry `user_id` with RLS. Weights are stored in **k
 - `exercises` — user-owned library: name, muscles (primary/secondary arrays), equipment, `category` (compound / isolation / bodyweight / weighted_bodyweight / skill), `load_type` (external / bodyweight / weighted_bodyweight / assisted), defaults, `increment_kg`, optional `available_loads_kg[]`, `progression` strategy, `e1rm_eligible`, notes, instructions, `archived_at`.
 - `programs` — name, active flag, `version`.
 - `program_versions` — JSON snapshot each time a program is changed (history & rollback).
-- `workout_templates` — belongs to a program; `day_of_week` (0–6 or null), position, notes, warm-up notes.
+- `workout_templates` — belongs to a program; position, notes, warm-up notes. `day_of_week` is legacy and no longer used: any workout can be done on any day.
 - `template_exercises` — template × exercise with position, sets, rep range, rest, target RIR, optional flag, notes.
 - `workout_sessions` — actual performed workout: status (in_progress / completed / discarded), started/ended, notes, bodyweight, links back to template/program (nullable, `on delete set null`).
 - `session_exercises` — exercise performed, position, notes, `prescribed` JSON snapshot, `substituted_for` exercise.

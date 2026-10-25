@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { epley } from "../e1rm";
 import { detectPRs } from "../prs";
 import { sessionPoints, weekStart } from "../analytics";
-import { exerciseInsights, missedSessions, volumeInsights } from "../insights";
+import { exerciseInsights, volumeInsights } from "../insights";
 import { ex, perf, set } from "./helpers";
 
 describe("e1RM", () => {
@@ -81,10 +81,5 @@ describe("insights", () => {
   });
   it("weekStart is Monday", () => {
     expect(weekStart(new Date(2026, 9, 25))).toBe("2026-10-19"); // Sunday → previous Monday
-  });
-  it("missed sessions counts scheduled days without a workout", () => {
-    const now = new Date(2026, 9, 25, 12); // Sunday
-    expect(missedSessions([1, 2, 4, 6], [], now)).toBe(8);
-    expect(missedSessions([1, 2, 4, 6], [new Date(2026, 9, 24, 10).toISOString()], now)).toBe(7);
   });
 });

@@ -13,16 +13,16 @@ Next.js 15 · React 19 · TypeScript · Tailwind CSS v4 · shadcn-style componen
 |---|---|
 | Auth | Email + password, magic link, protected routes, sign-out |
 | Program | Your 4-day program (Push / Pull / Lower / Upper + Muscle-Up) and 22 exercises, seeded automatically on sign-up. No performance numbers are preloaded. |
-| Active workout | Elapsed time, prescribed sets/reps/rest, suggested load, previous session per set, editable weight/reps/RIR, one-tap set completion, warm-up sets, add/remove sets, add/remove/replace/reorder exercises, exercise and workout notes, auto rest timer (+/−15 s, skip), autosave with resume, finish and discard |
+| Active workout | Pick any workout on any day (no fixed weekdays), or log one for a past day. Elapsed time, prescribed sets/reps/rest, suggested load, previous session per set, editable weight/reps/RIR, one-tap set completion, warm-up sets, add/remove sets, add/remove/replace/reorder exercises, exercise and workout notes, auto rest timer (+/−15 s, skip), autosave with resume, finish and discard |
 | Live comparison | Each completed set is compared with the same set last time: "+1 rep", "+2.5 kg", "Matched", "−2 reps", or "Heavier · new baseline" when load and reps move in opposite directions. The previous session opens from the exercise card. |
 | Progression | Deterministic, exercise-aware rules (double progression, reps-first for lateral raises and rear delts, bodyweight reps, no load progression for skill work). Suggestions explain themselves and can be dismissed. |
 | Summary | Duration, sets, volume, genuine PRs, comparison with last session, next-time suggestion per exercise |
-| History | Month calendar (completed / scheduled / skipped / rest), session list, full editing of past workouts (records are recomputed) |
+| History | Month calendar: tap any day to see what you logged or to log any workout on it, session list, full editing of past workouts (records are recomputed) |
 | Exercise library | Create, edit and archive exercises: muscles, equipment, category, load type, defaults, increment, exact available loads, weight convention, progression strategy, e1RM eligibility, technique notes |
 | Exercise pages | Progress chart (e1RM, top set, reps at top load, volume, total reps; 4W to All), bests, best reps at each load, heaviest load for N reps, last vs previous session, PRs, history, recommendation |
-| Programs | Edit templates, schedule days, sets/reps/rest/RIR, optional exercises, reorder, substitute, duplicate workouts and programs, version history with change notes |
-| Analytics | Exercise progress, weekly volume, workouts per week and adherence, weekly sets per muscle group, exercise frequency, pull-up / dip / muscle-up progression, monthly and yearly totals, bodyweight |
-| Insights | Conservative, minimum-data rules: declining performance across 3 comparable sessions, plateaus, frequent RIR 0, weekly volume spikes, missed sessions. Never diagnostic. Dismissable. |
+| Programs | Edit templates, sets/reps/rest/RIR, optional exercises, reorder, substitute, duplicate workouts and programs, version history with change notes |
+| Analytics | Exercise progress, weekly volume, workouts per week, weekly sets per muscle group, exercise frequency, pull-up / dip / muscle-up progression, monthly and yearly totals, bodyweight |
+| Insights | Conservative, minimum-data rules: declining performance across 3 comparable sessions, plateaus, frequent RIR 0, weekly volume spikes. Never diagnostic. Dismissable. |
 | Body | Bodyweight and circumferences, trends, history table |
 | Settings | Theme (light/dark/system), kg/lb, default rest, auto rest timer, rest sound, conservative progression |
 | Export | Full JSON backup, CSV set log, CSV body measurements |
@@ -64,7 +64,7 @@ Once your account exists, consider turning off public sign-ups (Authentication �
 ## Tests
 
 ```bash
-npm test          # 39 unit tests: comparison, progression, loads, PRs, analytics, insights
+npm test          # 38 unit tests: comparison, progression, loads, PRs, analytics, insights
 npm run typecheck
 npm run test:db   # migrations + RLS + workout flow on a throwaway local Postgres
 ```

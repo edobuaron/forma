@@ -1,12 +1,13 @@
 // Composes dashboard data from the data layer + domain logic. Server-side only.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sessionPoints, weekStart, weeklySetsPerMuscle } from "@/lib/domain/analytics";
-import { consistencyInsight, exerciseInsights, missedSessions, volumeInsights, type Insight } from "@/lib/domain/insights";
+import { exerciseInsights, volumeInsights, type Insight } from "@/lib/domain/insights";
 import { recommend, type Recommendation } from "@/lib/domain/progression";
 import type { ExerciseConfig } from "@/lib/domain/types";
+import { format } from "date-fns";
 import {
   completedSetHistory, getActiveProgram, getProfile, groupHistory, listDismissed, listExercises, listSessions,
-  recentHistory, recentRecords, type TemplateWithExercises,
+  recentHistory, recentRecords, toDayWorkout, toStartTemplates,
 } from "./queries";
 import { toExerciseConfig, toPrescription, type ExerciseRow } from "./types";
 
@@ -26,34 +27,23 @@ export async function loadDashboard(db: SupabaseClient) {
   const exById = new Map(exercises.map((e) => [e.id, e]));
   const templates = program?.templates ?? [];
 
-  // ----- schedule -----
-  // Nothing counts as "missed" before the account existed.
-  const created = new Date(profile.created_at);
-  const trackingStart = new Date(created.getFullYear(), created.getMonth(), created.getDate());
+  // ----- this week -----
+  // Workouts aren't tied to weekdays: any day up to today can be tapped to log any workout.
   const thisWeek = weekStart(now);
+  const lastWeek = weekStart(new Date(now.getTime() - 7 * 86400000));
   const weekSessions = recent.filter((s) => weekStart(new Date(s.started_at)) === thisWeek);
-  const doneToday = recent.some((s) => new Date(s.started_at).toDateString() === now.toDateString());
-  const scheduled = templates.filter((t) => t.day_of_week != null);
-  let next: TemplateWithExercises | null = null;
-  for (let i = doneToday ? 1 : 0; i < 8 && !next; i++) {
-    const dow = (now.getDay() + i) % 7;
-    next = scheduled.find((t) => t.day_of_week === dow) ?? null;
-  }
-  next ??= templates[0] ?? null;
-
+  const todayKey = format(now, "yyyy-MM-dd");
   const week = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) + i);
-    const tpl = scheduled.find((t) => t.day_of_week === d.getDay()) ?? null;
-    const sessions = weekSessions.filter((s) => new Date(s.started_at).toDateString() === d.toDateString());
-    const isPast = d < new Date(now.getFullYear(), now.getMonth(), now.getDate()) && d >= trackingStart;
+    const key = format(d, "yyyy-MM-dd");
     return {
-      date: d.toISOString(),
-      isToday: d.toDateString() === now.toDateString(),
-      template: tpl ? { id: tpl.id, name: tpl.name } : null,
-      done: sessions.map((s) => ({ id: s.id, name: s.name })),
-      missed: !!tpl && isPast && sessions.length === 0,
+      key,
+      isToday: key === todayKey,
+      isFuture: key > todayKey,
+      workouts: weekSessions.filter((s) => format(new Date(s.started_at), "yyyy-MM-dd") === key).reverse().map(toDayWorkout),
     };
   });
+  const startTemplates = toStartTemplates(templates, recent);
 
   // ----- weekly volume & sets (last 8 weeks) -----
   const weeks: string[] = [];
@@ -97,12 +87,14 @@ export async function loadDashboard(db: SupabaseClient) {
   }
   highlights.sort((x, y) => (y.to - y.from) / Math.max(1, y.from) - (x.to - x.from) / Math.max(1, x.from));
 
-  // ----- next-session recommendations -----
+  // ----- progression suggestions across the whole program -----
+  // An exercise in several workouts uses its first prescription in program order.
+  const firstUse = new Map<string, (typeof templates)[number]["exercises"][number]>();
+  for (const t of templates) for (const te of t.exercises) if (!firstUse.has(te.exercise_id)) firstUse.set(te.exercise_id, te);
   let recs: { exercise: ExerciseRow; cfg: ExerciseConfig; rec: Recommendation }[] = [];
-  if (next) {
-    const ids = next.exercises.map((e) => e.exercise_id);
-    const h = await recentHistory(db, ids, 6);
-    recs = next.exercises.map((te) => {
+  if (firstUse.size) {
+    const h = await recentHistory(db, [...firstUse.keys()], 6);
+    recs = [...firstUse.values()].map((te) => {
       const cfg = toExerciseConfig(te.exercise);
       return {
         exercise: te.exercise,
@@ -126,25 +118,21 @@ export async function loadDashboard(db: SupabaseClient) {
       thisWeek,
     ),
   );
-  const scheduledDays = scheduled.map((t) => t.day_of_week!) as number[];
-  const missed = missedSessions(scheduledDays, recent.map((s) => s.started_at), now, trackingStart);
-  const ci = consistencyInsight(missed, scheduledDays.length * 2);
-  if (ci) insights.push(ci);
   const visibleInsights = insights.filter((i) => !dismissed.has(`insight:${i.key}:${i.evidenceSessionId ?? ""}`));
   const enoughData = grouped.size > 0 && recent.length >= 6;
 
   return {
     profile,
     program,
-    next,
+    templates: startTemplates,
     week,
     weekCompleted: weekSessions.length,
-    weekScheduled: scheduled.length,
+    lastWeekCompleted: recent.filter((s) => weekStart(new Date(s.started_at)) === lastWeek).length,
     recent: recent.slice(0, 5),
     records,
     weekly,
     highlights: highlights.slice(0, 4),
-    recs: recs.slice(0, 4),
+    recs: recs.slice(0, 5),
     insights: visibleInsights.slice(0, 4),
     enoughData,
     totalSessions: recent.length,

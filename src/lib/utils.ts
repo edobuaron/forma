@@ -24,5 +24,3 @@ export function formatMinutes(ms: number): string {
   return `${Math.floor(m / 60)} h ${m % 60} min`;
 }
 
-export const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-export const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

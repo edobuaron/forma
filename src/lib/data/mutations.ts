@@ -11,19 +11,23 @@ function ok<T>(res: { data: T | null; error: { message: string; details?: string
   return res.data as T;
 }
 
-export async function startWorkout(db: DB, templateId: string | null, name?: string): Promise<string> {
-  const res = await db.rpc("start_workout", { p_template_id: templateId, p_name: name ?? null });
+/** Start a workout now, or log one for a past day when `startedAt` is given. */
+export async function startWorkout(db: DB, templateId: string | null, opts: { name?: string; startedAt?: Date } = {}): Promise<string> {
+  const res = await db.rpc("start_workout_on", {
+    p_template_id: templateId, p_name: opts.name ?? null, p_started_at: opts.startedAt?.toISOString() ?? null,
+  });
   if (res.error?.message === "workout_in_progress") {
     const existing = res.error.details;
     throw Object.assign(new Error("A workout is already in progress."), { code: "in_progress", sessionId: existing });
   }
+  if (res.error?.message === "future_date") throw new Error("Workouts can't be logged for a future day.");
   return ok(res) as string;
 }
 
-export async function finishWorkout(db: DB, sessionId: string, notes: string | null) {
+export async function finishWorkout(db: DB, sessionId: string, notes: string | null, endedAt = new Date()) {
   // Uncompleted sets are not part of the record.
   ok(await db.from("set_logs").delete().eq("session_id", sessionId).eq("completed", false));
-  ok(await db.from("workout_sessions").update({ status: "completed", ended_at: new Date().toISOString(), notes }).eq("id", sessionId));
+  ok(await db.from("workout_sessions").update({ status: "completed", ended_at: endedAt.toISOString(), notes }).eq("id", sessionId));
 }
 
 export async function discardWorkout(db: DB, sessionId: string) {

@@ -131,6 +131,47 @@ export async function listSessions(db: DB, opts: { limit?: number; from?: string
   }));
 }
 
+/** A program workout as offered in the "pick a workout" lists. */
+export interface StartTemplate {
+  id: string;
+  name: string;
+  exerciseCount: number;
+  setCount: number;
+  exercises: string[];
+  lastDone: string | null;
+}
+
+/** Program workouts in program order, each with the date it was last done (from `sessions`, newest first). */
+export function toStartTemplates(templates: TemplateWithExercises[], sessions: SessionListItem[]): StartTemplate[] {
+  const last = new Map<string, string>();
+  for (const s of sessions) if (s.template_id && !last.has(s.template_id)) last.set(s.template_id, s.started_at);
+  return templates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    exerciseCount: t.exercises.length,
+    setCount: t.exercises.reduce((a, e) => a + e.sets, 0),
+    exercises: t.exercises.map((e) => e.exercise.name),
+    lastDone: last.get(t.id) ?? null,
+  }));
+}
+
+/** A finished workout as listed on a calendar day. */
+export interface DayWorkout {
+  id: string;
+  name: string;
+  setCount: number;
+  minutes: number | null;
+}
+
+export function toDayWorkout(s: SessionListItem): DayWorkout {
+  return {
+    id: s.id,
+    name: s.name,
+    setCount: s.set_count,
+    minutes: s.ended_at ? Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000) : null,
+  };
+}
+
 // ---------- history ----------
 /** Group flat history rows into per-session performances, newest first, keyed by exercise. */
 export function groupHistory(rows: SetHistoryRow[]): Map<string, ExercisePerformance[]> {

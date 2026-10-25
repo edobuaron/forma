@@ -1,4 +1,5 @@
 "use client";
+import { format } from "date-fns";
 import { ChevronLeft, Cloud, CloudOff, Loader2, MoreHorizontal, Plus, Timer, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -6,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/dropdown";
-import { Textarea } from "@/components/ui/input";
+import { Input, Label, Textarea } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { recommend, type Recommendation } from "@/lib/domain/progression";
 import type { ExercisePerformance } from "@/lib/domain/types";
@@ -102,6 +103,11 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
   const [dismissed, setDismissed] = useState(() => new Set(initialDismissed));
   const unit = profile.unit;
   const restKey = `forma:rest:${sessionId}`;
+  // A workout logged for a past day starts well before the row was created. It has no live clock
+  // or rest timer, and asks for its duration when saved.
+  const startedAt = new Date(initialSession.started_at);
+  const backdated = !!initialSession.created_at && new Date(initialSession.created_at).getTime() - startedAt.getTime() > 3600_000;
+  const [minutes, setMinutes] = useState("");
 
   // ---------- autosave queue ----------
   useEffect(() => {
@@ -193,7 +199,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
       toast("Enter reps first");
       return;
     }
-    const patch: Partial<WSet> = { completed: true, completed_at: new Date().toISOString(), reps };
+    const patch: Partial<WSet> = { completed: true, completed_at: backdated ? initialSession.started_at : new Date().toISOString(), reps };
     if (assisted) {
       patch.assistance_kg = set.assistance_kg ?? (set.kind === "working" ? rec?.targetLoadKg ?? prevSet?.assistanceKg ?? null : null);
     } else {
@@ -205,7 +211,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
       }
     }
     onSetChange(item, setId, patch);
-    if (profile.auto_rest_timer && set.kind === "working") {
+    if (profile.auto_rest_timer && !backdated && set.kind === "working") {
       const restS = item.prescribed.rest_s ?? item.exercise.default_rest_s ?? profile.default_rest_s;
       if (restS > 0) setRest({ endAt: Date.now() + restS * 1000, duration: restS, label: item.exercise.name });
     }
@@ -337,7 +343,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
       const q = queueRef.current!;
       for (let i = 0; i < 5 && !(await q.flush()); i++) await new Promise((r) => setTimeout(r, 800));
       if (q.pending > 0) throw new Error("Couldn't reach the server. Your sets are saved on this device — try again when you're online.");
-      await finishWorkout(db, sessionId, notes || null);
+      const mins = Number(minutes);
+      await finishWorkout(db, sessionId, notes || null, backdated ? new Date(startedAt.getTime() + (mins > 0 ? mins : estMinutes) * 60000) : new Date());
       const exs = [...new Map(items.filter((i) => i.sets.some((s) => s.completed)).map((i) => [i.exercise_id, i.exercise])).values()];
       try { await recomputeRecords(db, exs); } catch (e) { console.error(e); }
       try { localStorage.removeItem(restKey); } catch { /* noop */ }
@@ -363,7 +370,9 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
     }
   }
 
-  const elapsed = now - new Date(initialSession.started_at).getTime();
+  const elapsed = now - startedAt.getTime();
+  // ~40 s per completed set plus its prescribed rest
+  const estMinutes = Math.max(10, Math.round(items.reduce((a, i) => a + i.sets.filter((x) => x.completed).length * (40 + (i.prescribed.rest_s ?? profile.default_rest_s)), 0) / 60));
 
   return (
     <div className="min-h-dvh pb-40">
@@ -376,7 +385,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-semibold leading-tight tracking-tight">{initialSession.name}</p>
             <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground tabular">
-              <span suppressHydrationWarning>{formatDuration(elapsed)}</span>
+              {backdated ? <span>Logging for {format(startedAt, "EEE d MMM")}</span> : <span suppressHydrationWarning>{formatDuration(elapsed)}</span>}
               <span aria-live="polite" className="flex items-center gap-1">
                 ·{" "}
                 {sync.status === "saving" ? (<><Loader2 className="size-3 animate-spin" /> Saving</>)
@@ -385,13 +394,15 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
               </span>
             </p>
           </div>
-          <button
-            aria-label="Start rest timer"
-            onClick={() => setRest({ endAt: Date.now() + profile.default_rest_s * 1000, duration: profile.default_rest_s, label: "Manual" })}
-            className="grid size-10 place-items-center rounded-full text-muted-foreground hover:bg-muted"
-          >
-            <Timer className="size-[18px]" />
-          </button>
+          {!backdated && (
+            <button
+              aria-label="Start rest timer"
+              onClick={() => setRest({ endAt: Date.now() + profile.default_rest_s * 1000, duration: profile.default_rest_s, label: "Manual" })}
+              className="grid size-10 place-items-center rounded-full text-muted-foreground hover:bg-muted"
+            >
+              <Timer className="size-[18px]" />
+            </button>
+          )}
           <Menu>
             <MenuTrigger aria-label="Workout options" className="grid size-10 place-items-center rounded-full text-muted-foreground outline-none hover:bg-muted">
               <MoreHorizontal className="size-5" />
@@ -402,7 +413,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
             </MenuContent>
           </Menu>
           <Button variant="primary" size="sm" className="ml-1 h-9 px-4" onClick={() => setFinishing(true)} disabled={busy}>
-            Finish
+            {backdated ? "Save" : "Finish"}
           </Button>
         </div>
       </header>
@@ -463,7 +474,17 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
       />
 
       <Sheet open={finishing} onOpenChange={setFinishing}>
-        <SheetContent title="Finish workout?" description={`${formatDuration(elapsed)} · ${counts.done} set${counts.done === 1 ? "" : "s"} completed`}>
+        <SheetContent
+          title={backdated ? "Save workout?" : "Finish workout?"}
+          description={`${backdated ? format(startedAt, "EEEE d MMMM") : formatDuration(elapsed)} · ${counts.done} set${counts.done === 1 ? "" : "s"} completed`}
+        >
+          {backdated && (
+            <div className="mb-4 space-y-1.5">
+              <Label htmlFor="duration">How long did it take? (minutes)</Label>
+              <Input id="duration" inputMode="numeric" pattern="[0-9]*" placeholder={String(estMinutes)} value={minutes} onChange={(e) => setMinutes(e.target.value.replace(/\D/g, "").slice(0, 3))} />
+              <p className="text-[12px] text-muted-foreground">Leave empty to use the estimate of {estMinutes} min. You can change it later in History.</p>
+            </div>
+          )}
           {counts.open > 0 && (
             <p className="mb-4 rounded-md bg-muted px-3 py-2.5 text-[13.5px] text-muted-foreground">
               {counts.open} set{counts.open === 1 ? "" : "s"} not marked complete will be left out of the record.
@@ -472,9 +493,9 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
           {counts.done === 0 && <p className="mb-4 text-[13.5px] text-muted-foreground">No completed sets yet. You can discard the workout instead.</p>}
           <div className="flex flex-col gap-2">
             <Button variant="primary" size="lg" onClick={finish} disabled={busy || counts.done === 0}>
-              {busy && <Loader2 className="animate-spin" />} Finish & save
+              {busy && <Loader2 className="animate-spin" />} {backdated ? "Save workout" : "Finish & save"}
             </Button>
-            <Button variant="ghost" size="lg" onClick={() => setFinishing(false)}>Keep training</Button>
+            <Button variant="ghost" size="lg" onClick={() => setFinishing(false)}>{backdated ? "Keep editing" : "Keep training"}</Button>
           </div>
         </SheetContent>
       </Sheet>

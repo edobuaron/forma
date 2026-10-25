@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/misc";
 import { getProgram, listPrograms } from "@/lib/data/queries";
 import { requireUser } from "@/lib/supabase/server";
-import { DAY_SHORT } from "@/lib/utils";
 
 export const metadata = { title: "Programs" };
 
@@ -33,7 +32,7 @@ export default async function ProgramsPage() {
             <div className="mt-4 flex flex-wrap gap-2">
               {p!.templates.map((t) => (
                 <span key={t.id} className="rounded-md bg-subtle px-2.5 py-1 text-[12.5px]">
-                  <span className="text-muted-foreground">{t.day_of_week != null ? DAY_SHORT[t.day_of_week] : "—"}</span> <span className="font-medium">{t.name}</span>
+                  <span className="font-medium">{t.name}</span>
                 </span>
               ))}
             </div>

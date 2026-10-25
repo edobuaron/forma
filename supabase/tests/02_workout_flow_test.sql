@@ -28,6 +28,31 @@ begin
   assert (select count(*) from public.set_history) >= 16, 'view visible';
 end $$;
 
+-- Any template on any day: backdated sessions compare only against earlier sessions.
+do $$
+declare sid uuid; tid uuid; pu uuid[]; n int;
+begin
+  select id into tid from public.workout_templates where name = 'Pull';
+  pu := array(select id from public.exercises where slug = 'weighted-pull-up');
+  begin
+    perform public.start_workout_on(tid, null, now() + interval '2 days');
+    raise exception 'should have failed';
+  exception when raise_exception then
+    if sqlerrm <> 'future_date' then raise; end if;
+  end;
+  sid := public.start_workout_on(tid, null, now() - interval '3 days');
+  assert (select started_at::date from public.workout_sessions where id = sid) = (now() - interval '3 days')::date, 'backdated start';
+  assert (select count(*) from public.set_logs where session_id = sid) = 16, 'backdated session has template sets';
+  select count(*) into n from public.recent_exercise_history(pu, 6, sid);
+  assert n = 0, 'nothing logged before the backdated day: ' || n;
+  select count(*) into n from public.recent_exercise_history(pu, 6, null);
+  assert n = 3, 'later sessions still visible without a cutoff: ' || n;
+  delete from public.workout_sessions where id = sid;
+  sid := public.start_workout(null, 'Quick');
+  assert (select started_at > now() - interval '1 minute' from public.workout_sessions where id = sid), 'legacy start is now';
+  delete from public.workout_sessions where id = sid;
+end $$;
+
 set request.jwt.claims = '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
 do $$ begin
   assert (select count(*) from public.set_history) = 0, 'view respects RLS';

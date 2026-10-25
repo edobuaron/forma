@@ -31,7 +31,7 @@ Sessions reference templates with `on delete set null`; they never depend on the
 | `exercises` | User's exercise library | `category` (compound / isolation / bodyweight / weighted_bodyweight / skill), `load_type` (external / bodyweight / weighted_bodyweight / assisted), `progression` (double_progression / reps_first / bodyweight_reps / skill / none), `increment_kg`, optional `available_loads_kg[]`, `weight_convention` (total / per_dumbbell / per_side / stack / added), `e1rm_eligible`, `archived_at` |
 | `programs` | Training programs | one `is_active` per user; `version` increments on each save |
 | `program_versions` | History of program changes | full JSON snapshot + note |
-| `workout_templates` | A planned workout (e.g. "Push") | `day_of_week` 0=Sun…6=Sat or null |
+| `workout_templates` | A planned workout (e.g. "Push") | `day_of_week` is legacy (always null after editing); workouts are not tied to weekdays |
 | `template_exercises` | Planned exercise in a template | sets, rep_min, rep_max, rest_s, target_rir, optional, notes |
 | `workout_sessions` | A performed workout | `status` in_progress / completed / discarded (max one in progress), started/ended, notes, bodyweight snapshot |
 | `session_exercises` | Exercise performed in a session | `prescribed` snapshot, `substituted_for`, notes |
@@ -43,8 +43,8 @@ Sessions reference templates with `on delete set null`; they never depend on the
 ## Read model and RPCs
 
 - `set_history` (view, `security_invoker`): flat join of sets with their session and exercise. Used for analytics and export.
-- `recent_exercise_history(exercise_ids, sessions, exclude_session)`: last N completed sessions per exercise. Powers previous-session comparison and recommendations.
-- `start_workout(template_id, name)`: atomically creates a session, its exercises (with prescription snapshot) and empty sets.
+- `recent_exercise_history(exercise_ids, sessions, exclude_session)`: last N completed sessions per exercise. Powers previous-session comparison and recommendations. When a session is excluded, only sessions that started before it count, so a backdated workout compares against what came before it.
+- `start_workout_on(template_id, name, started_at)`: atomically creates a session, its exercises (with prescription snapshot) and empty sets. `started_at` defaults to now; a past date logs a workout for that day (future dates are rejected). `start_workout(template_id, name)` is kept as a wrapper that starts now.
 - `snapshot_program(program_id, note)`: bumps the program version and stores a snapshot.
 - `ensure_seeded()`: seeds the default program for an account that has none.
 

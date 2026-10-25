@@ -88,6 +88,7 @@ export interface SessionRow {
   ended_at: string | null;
   notes: string | null;
   bodyweight_kg: number | null;
+  created_at?: string;
   updated_at?: string;
 }
 

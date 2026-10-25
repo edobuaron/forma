@@ -2,7 +2,8 @@ import { format, formatDistanceToNowStrict } from "date-fns";
 import { Award, Check, ChevronRight, Lightbulb, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { Bars } from "@/components/charts/charts";
-import { DismissButton, StartButton } from "@/components/dashboard/client";
+import { DismissButton, StartButton, TemplateGrid } from "@/components/dashboard/client";
+import { WeekStrip } from "@/components/dashboard/week-strip";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/misc";
@@ -11,7 +12,7 @@ import { prLabel, type PRType } from "@/lib/domain/prs";
 import { formatWeight, kgToDisplay } from "@/lib/domain/units";
 import { loadDashboard } from "@/lib/data/dashboard";
 import { requireUser } from "@/lib/supabase/server";
-import { cn, DAY_NAMES, formatMinutes } from "@/lib/utils";
+import { cn, formatMinutes } from "@/lib/utils";
 
 export const metadata = { title: "Today" };
 
@@ -25,10 +26,7 @@ export default async function Dashboard() {
   const d = await loadDashboard(supabase);
   const unit = d.profile.unit;
   const now = new Date();
-  const next = d.next;
-  const nextIsToday = next?.day_of_week === now.getDay() && !d.week.find((w) => w.isToday)?.done.length;
-  // ~40 s per set + prescribed rest + ~8 min for warm-up and changeovers
-  const estMinutes = next ? Math.round(next.exercises.reduce((a, e) => a + e.sets * (40 + e.rest_s), 0) / 60 + 8) : 0;
+  const doneToday = d.week.find((w) => w.isToday)?.workouts ?? [];
   const fmtW = (v: number) => formatWeight(v, unit);
   const loadLabel = (kg: number, lt: string) => (lt === "bodyweight" || lt === "weighted_bodyweight" ? (kg ? `+${fmtW(kg)}` : "BW") : fmtW(kg));
 
@@ -44,53 +42,23 @@ export default async function Dashboard() {
         <StartButton templateId={null} label="Quick start" variant="outline" className="hidden md:inline-flex" />
       </div>
 
-      {/* Next workout */}
-      {next && (
-        <Card className="overflow-hidden">
-          <div className="flex flex-col gap-5 p-5 md:flex-row md:items-center md:justify-between md:p-6">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-[13px] font-medium text-muted-foreground">{nextIsToday ? "Today" : `Next · ${next.day_of_week != null ? DAY_NAMES[next.day_of_week] : "Unscheduled"}`}</p>
-                {nextIsToday && <span className="size-1.5 rounded-full bg-accent" />}
-              </div>
-              <h2 className="mt-1 text-[24px] font-semibold tracking-[-0.02em]">{next.name}</h2>
-              <p className="mt-1 text-[14px] text-muted-foreground">
-                {next.exercises.length} exercises · {next.exercises.reduce((a, e) => a + e.sets, 0)} sets · ~{estMinutes} min
-              </p>
-              <p className="mt-3 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground/90">{next.exercises.map((e) => e.exercise.name).join(" · ")}</p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <StartButton templateId={next.id} size="xl" className="flex-1 md:flex-none" label={`Start ${next.name}`} />
-            </div>
+      {/* Pick any workout, any day */}
+      <Card className="overflow-hidden">
+        <div className="p-4 md:p-6">
+          <div className="mb-3 flex items-baseline justify-between gap-3 md:mb-4">
+            <h2 className="text-[17px] font-semibold tracking-tight">
+              {doneToday.length ? `Done today: ${doneToday.map((w) => w.name).join(" + ")}` : "What are you training today?"}
+            </h2>
+            <span className="hidden text-[12.5px] text-muted-foreground sm:block">Tap a day below to log a past workout</span>
           </div>
-          {/* Week strip */}
-          <div className="grid grid-cols-7 border-t bg-muted/40">
-            {d.week.map((w) => {
-              const dt = new Date(w.date);
-              const done = w.done.length > 0;
-              return (
-                <div key={w.date} className={cn("flex flex-col items-center gap-1 border-r px-1 py-3 last:border-r-0", w.isToday && "bg-card")}>
-                  <span className={cn("text-[11px] font-medium text-muted-foreground", w.isToday && "text-foreground")}>{format(dt, "EEEEE")}</span>
-                  <span
-                    className={cn(
-                      "grid size-7 place-items-center rounded-full text-[12px] font-semibold tabular",
-                      done && "bg-accent text-accent-foreground",
-                      !done && w.template && !w.missed && "border border-accent/50 text-accent",
-                      w.missed && "border border-dashed text-muted-foreground",
-                      !done && !w.template && "text-muted-foreground/60",
-                    )}
-                  >
-                    {done ? <Check className="size-3.5" strokeWidth={3} /> : dt.getDate()}
-                  </span>
-                  <span className="hidden w-full truncate text-center text-[11px] text-muted-foreground sm:block">
-                    {done ? w.done[0].name : w.template?.name ?? "Rest"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
+          {d.templates.length > 0 ? (
+            <TemplateGrid templates={d.templates} />
+          ) : (
+            <p className="text-[13px] text-muted-foreground">Your program has no workouts yet. Add some under Programs, or quick start an empty one.</p>
+          )}
+        </div>
+        <WeekStrip days={d.week} templates={d.templates} />
+      </Card>
 
       <StartButton templateId={null} label="Quick start empty workout" variant="outline" size="lg" className="w-full md:hidden" />
 
@@ -99,13 +67,13 @@ export default async function Dashboard() {
         <Card>
           <CardHeader><CardTitle>This week</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-[32px] font-semibold tabular tracking-tight">
-              {d.weekCompleted}<span className="text-[18px] text-muted-foreground"> of {d.weekScheduled || "–"}</span>
+            <p className="text-[32px] font-semibold tabular tracking-tight">{d.weekCompleted}</p>
+            <p className="text-[13px] text-muted-foreground">
+              workout{d.weekCompleted === 1 ? "" : "s"} logged · last week {d.lastWeekCompleted}
             </p>
-            <p className="text-[13px] text-muted-foreground">planned workouts completed{d.weekCompleted > d.weekScheduled && d.weekScheduled > 0 ? ` (+${d.weekCompleted - d.weekScheduled} extra)` : ""}</p>
             <div className="mt-4 flex gap-1.5">
-              {Array.from({ length: d.weekScheduled || d.weekCompleted }, (_, i) => (
-                <span key={i} className={cn("h-1.5 flex-1 rounded-full", i < d.weekCompleted ? "bg-accent" : "bg-subtle")} />
+              {d.week.map((w) => (
+                <span key={w.key} className={cn("h-1.5 flex-1 rounded-full", w.workouts.length ? "bg-accent" : "bg-subtle")} />
               ))}
             </div>
           </CardContent>
@@ -137,11 +105,11 @@ export default async function Dashboard() {
         {/* Recommendations */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-1.5"><TrendingUp className="size-4" /> Next session{next ? ` · ${next.name}` : ""}</CardTitle>
+            <CardTitle className="flex items-center gap-1.5"><TrendingUp className="size-4" /> Progress suggestions</CardTitle>
           </CardHeader>
           <CardContent>
             {d.recs.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Suggestions appear after you&apos;ve logged these exercises once. Nothing is guessed before then.</p>
+              <p className="text-[13px] text-muted-foreground">Suggestions appear after you&apos;ve logged an exercise once. Nothing is guessed before then.</p>
             ) : (
               <ul className="divide-y">
                 {d.recs.map((r) => (
@@ -247,7 +215,7 @@ export default async function Dashboard() {
         </CardHeader>
         <CardContent>
           {d.recent.length === 0 ? (
-            <EmptyState title="No workouts yet">Start {next?.name ?? "a workout"} to begin building your history.</EmptyState>
+            <EmptyState title="No workouts yet">Pick a workout above to begin building your history.</EmptyState>
           ) : (
             <ul className="divide-y">
               {d.recent.map((s) => (

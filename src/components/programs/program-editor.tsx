@@ -9,14 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ExercisePicker } from "@/components/workout/exercise-picker";
 import { archiveProgram, duplicateProgram, setActiveProgram, snapshotProgram } from "@/lib/data/mutations";
 import type { ProgramFull, TemplateWithExercises } from "@/lib/data/queries";
 import type { ExerciseRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
-import { cn, DAY_NAMES, uuid } from "@/lib/utils";
+import { cn, uuid } from "@/lib/utils";
 
 type TE = TemplateWithExercises["exercises"][number];
 type T = Omit<TemplateWithExercises, "exercises"> & { exercises: TE[]; _new?: boolean };
@@ -117,7 +117,7 @@ export function ProgramEditor({ program, library, versions }: { program: Program
       if (r1.error) throw r1.error;
       if (removedExercises.length) { const r = await db.from("template_exercises").delete().in("id", removedExercises); if (r.error) throw r.error; }
       if (removedTemplates.length) { const r = await db.from("workout_templates").delete().in("id", removedTemplates); if (r.error) throw r.error; }
-      const tRows = templates.map((t, i) => ({ id: t.id, program_id: program.id, name: t.name.trim(), day_of_week: t.day_of_week, position: i + 1, notes: t.notes, warmup_notes: t.warmup_notes }));
+      const tRows = templates.map((t, i) => ({ id: t.id, program_id: program.id, name: t.name.trim(), day_of_week: null, position: i + 1, notes: t.notes, warmup_notes: t.warmup_notes }));
       if (tRows.length) { const r = await db.from("workout_templates").upsert(tRows); if (r.error) throw r.error; }
       const eRows = templates.flatMap((t) => t.exercises.map((e, i) => ({
         id: e.id, template_id: t.id, exercise_id: e.exercise_id, position: i + 1, sets: e.sets, rep_min: e.rep_min, rep_max: e.rep_max,
@@ -167,10 +167,6 @@ export function ProgramEditor({ program, library, versions }: { program: Program
           <Card key={t.id} className="p-4 md:p-5">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <Input value={t.name} onChange={(e) => patchT(t.id, { name: e.target.value })} className="h-10 min-w-0 flex-1 text-[16px] font-semibold" aria-label="Workout name" />
-              <Select value={t.day_of_week ?? ""} onChange={(e) => patchT(t.id, { day_of_week: e.target.value === "" ? null : Number(e.target.value) })} className="h-10 w-36" aria-label="Scheduled day">
-                <option value="">Unscheduled</option>
-                {[1, 2, 3, 4, 5, 6, 0].map((d) => <option key={d} value={d}>{DAY_NAMES[d]}</option>)}
-              </Select>
               <Menu>
                 <MenuTrigger className="grid size-10 place-items-center rounded-full outline-none hover:bg-muted" aria-label="Workout options"><MoreHorizontal className="size-4" /></MenuTrigger>
                 <MenuContent>

@@ -1,6 +1,6 @@
 import { dominantLoad, effectiveLoad, sameLoad, workingSets } from "./sets";
 import type { ExerciseConfig, ExercisePerformance } from "./types";
-import { MUSCLE_LABELS, weekStart } from "./analytics";
+import { MUSCLE_LABELS } from "./analytics";
 
 /**
  * Recovery-aware, evidence-informed observations. Deliberately conservative:
@@ -142,36 +142,6 @@ export function volumeInsights(weeks: WeeklyMuscleSets[], currentWeek: string, e
     }
   }
   return out;
-}
-
-/** Scheduled days (0–6) missed in the last 14 days, counting only days strictly before today. */
-export function missedSessions(scheduledDays: number[], completedDates: string[], now = new Date(), since?: Date): number {
-  if (scheduledDays.length === 0) return 0;
-  const done = new Set(completedDates.map((d) => new Date(d).toDateString()));
-  let missed = 0;
-  for (let i = 1; i <= 14; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    if (since && d < since) continue;
-    if (scheduledDays.includes(d.getDay()) && !done.has(d.toDateString())) missed++;
-  }
-  // Allow for shifting a session by a day: subtract sessions done on unscheduled days.
-  let extra = 0;
-  for (const c of completedDates) {
-    const d = new Date(c);
-    const age = (now.getTime() - d.getTime()) / 86400000;
-    if (age > 0 && age <= 14 && !scheduledDays.includes(d.getDay())) extra++;
-  }
-  return Math.max(0, missed - extra);
-}
-
-export function consistencyInsight(missed: number, totalScheduled: number): Insight | null {
-  if (totalScheduled < 4 || missed < 3) return null;
-  return {
-    key: `missed:${weekStart(new Date())}`,
-    severity: "info",
-    title: `${missed} scheduled sessions missed in the last two weeks`,
-    detail: "If the schedule no longer fits, adjusting training days in your program may be easier to stick to.",
-  };
 }
 
 function labelFor(m: string) {
