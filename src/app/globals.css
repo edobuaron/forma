@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------- design tokens ---------- */
+:root {
+  --background: oklch(0.985 0.002 90);
+  --foreground: oklch(0.2 0.006 270);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --muted: oklch(0.965 0.003 270);
+  --muted-foreground: oklch(0.52 0.01 270);
+  --subtle: oklch(0.94 0.004 270);
+  --border: oklch(0.915 0.004 270);
+  --input: oklch(0.9 0.005 270);
+  --ring: oklch(0.58 0.17 262 / 0.45);
+  --accent: oklch(0.55 0.17 262);
+  --accent-foreground: oklch(0.99 0 0);
+  --accent-soft: oklch(0.55 0.17 262 / 0.09);
+  --positive: oklch(0.52 0.12 155);
+  --negative: oklch(0.6 0.13 55);
+  --chart-grid: oklch(0.92 0.004 270);
+  --chart-muted: oklch(0.75 0.008 270);
+  --shadow-card: 0 1px 2px oklch(0.2 0.01 270 / 0.04), 0 1px 1px oklch(0.2 0.01 270 / 0.02);
+  --radius: 16px;
+}
+
+.dark {
+  --background: oklch(0.145 0.004 270);
+  --foreground: oklch(0.95 0.003 270);
+  --card: oklch(0.185 0.005 270);
+  --card-foreground: var(--foreground);
+  --muted: oklch(0.215 0.005 270);
+  --muted-foreground: oklch(0.67 0.008 270);
+  --subtle: oklch(0.245 0.006 270);
+  --border: oklch(0.26 0.006 270);
+  --input: oklch(0.3 0.007 270);
+  --ring: oklch(0.68 0.15 262 / 0.5);
+  --accent: oklch(0.68 0.15 262);
+  --accent-foreground: oklch(0.15 0.01 270);
+  --accent-soft: oklch(0.68 0.15 262 / 0.14);
+  --positive: oklch(0.74 0.12 155);
+  --negative: oklch(0.76 0.12 65);
+  --chart-grid: oklch(0.26 0.006 270);
+  --chart-muted: oklch(0.45 0.01 270);
+  --shadow-card: 0 0 0 0 transparent;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --shadow-card: var(--shadow-card);
+  --animate-in: fade-in 180ms ease-out;
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+@layer base {
+  * { border-color: var(--border); }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::selection { background: var(--accent-soft); }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; }
+}
+
+@utility tabular { font-variant-numeric: tabular-nums; }
+@utility pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+@utility pt-safe { padding-top: env(safe-area-inset-top); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* Recharts tweaks */
+.recharts-cartesian-grid line { stroke: var(--chart-grid); }
+.recharts-text { fill: var(--muted-foreground); font-size: 11px; }
+.recharts-tooltip-cursor { stroke: var(--border); }
