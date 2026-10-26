@@ -10,7 +10,7 @@ import { formatSetLong } from "./format";
 export function PreviousSessionSheet({
   open, onOpenChange, ex, history, unit,
 }: { open: boolean; onOpenChange: (o: boolean) => void; ex: ExerciseConfig; history: ExercisePerformance[]; unit: WeightUnit }) {
-  const sessions = history.filter((h) => workingSets(h.sets).length > 0).slice(0, 4);
+  const sessions = history.filter((h) => workingSets(h.sets, ex).length > 0).slice(0, 4);
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent title={ex.name} description="Recent sessions">

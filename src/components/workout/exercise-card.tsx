@@ -46,7 +46,7 @@ export function ExerciseCard(p: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [showTech, setShowTech] = useState(false);
 
-  const prev = history.find((h) => workingSets(h.sets).length > 0) ?? null;
+  const prev = history.find((h) => workingSets(h.sets, ex).length > 0) ?? null;
   const prevSets = prev?.sets ?? [];
   const rx = item.prescribed;
   const prevSummary = prev ? summarisePrevious(prevSets, prev.prescription?.sets ?? null) : null;
@@ -103,7 +103,7 @@ export function ExerciseCard(p: Props) {
             {prev ? (
               <button onClick={() => setShowPrev(true)} className="block w-full text-left text-[13px] text-muted-foreground">
                 <span className="font-medium text-foreground/80">Last time</span>{" "}
-                <span className="tabular">{formatSetsCompact(workingSets(prevSets), ex.loadType, unit)}</span>
+                <span className="tabular">{formatSetsCompact(workingSets(prevSets, ex), ex.loadType, unit)}</span>
                 {prevSummary?.incomplete && <span> · {prevSummary.completedWorkingSets}/{prevSummary.prescribedSets} sets</span>}
                 {item.substituted_for && <span> · substituted</span>}
               </button>
@@ -145,7 +145,7 @@ export function ExerciseCard(p: Props) {
               const isWarm = s.kind === "warmup";
               if (!isWarm) workingIdx++;
               const idx = workingIdx;
-              const prevSet = isWarm ? null : previousCounterpart(prevSets, idx);
+              const prevSet = isWarm ? null : previousCounterpart(prevSets, idx, ex);
               const targetReps = isWarm ? null : rec?.targetReps?.[idx] ?? prevSet?.reps ?? null;
               const suggestedLoad = isWarm ? null : rec?.targetLoadKg ?? (assisted ? prevSet?.assistanceKg : prevSet?.weightKg) ?? null;
               const loadVal = assisted ? s.assistance_kg : s.weight_kg;

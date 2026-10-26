@@ -1,5 +1,5 @@
 import { epley } from "./e1rm";
-import { effectiveLoad, isValidWorkingSet, sameLoad, workingSets } from "./sets";
+import { completedWorkingSets, effectiveLoad, hasLoggedLoad, isValidWorkingSet, sameLoad } from "./sets";
 import type { ExerciseConfig, LoggedSet } from "./types";
 
 export type ComparisonStatus =
@@ -31,7 +31,7 @@ export function compareSet(
   previous: LoggedSet | null | undefined,
   ex: Pick<ExerciseConfig, "loadType" | "e1rmEligible">,
 ): SetComparison {
-  if (!previous || !isValidWorkingSet(previous) || !isValidWorkingSet(current)) return NONE;
+  if (!previous || !isValidWorkingSet(previous, ex) || !isValidWorkingSet(current, ex)) return NONE;
   const cl = effectiveLoad(current, ex);
   const pl = effectiveLoad(previous, ex);
   const cr = current.reps!;
@@ -69,10 +69,14 @@ export function compareSet(
   return { status: "not_comparable", loadDeltaKg, repDelta, basis: "none" };
 }
 
-/** Pair the i-th working set of the current session with the i-th working set of the previous one. */
-export function previousCounterpart(previousSets: LoggedSet[], workingIndex: number): LoggedSet | null {
-  const ws = workingSets(previousSets);
-  return ws[workingIndex] ?? null;
+/**
+ * Pair the i-th working set of the current session with the i-th working set of the previous one.
+ * Pairing is by position among completed working sets, so a set with no logged load leaves a gap
+ * (no comparison) instead of shifting every later pair.
+ */
+export function previousCounterpart(previousSets: LoggedSet[], workingIndex: number, ex: Pick<ExerciseConfig, "loadType">): LoggedSet | null {
+  const s = completedWorkingSets(previousSets)[workingIndex];
+  return s && hasLoggedLoad(s, ex) ? s : null;
 }
 
 export interface PreviousSummary {
@@ -82,7 +86,7 @@ export interface PreviousSummary {
 }
 
 export function summarisePrevious(previousSets: LoggedSet[], prescribedSets: number | null): PreviousSummary {
-  const n = workingSets(previousSets).length;
+  const n = completedWorkingSets(previousSets).length;
   return {
     completedWorkingSets: n,
     prescribedSets,

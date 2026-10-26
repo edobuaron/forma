@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { Award, ChevronLeft, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,35 +14,51 @@ import { NumberField } from "@/components/workout/number-field";
 import { prLabel, type PRType } from "@/lib/domain/prs";
 import type { WeightUnit } from "@/lib/domain/types";
 import { displayToKg, formatVolume, kgToDisplay } from "@/lib/domain/units";
-import { deleteSession, recomputeRecords } from "@/lib/data/mutations";
+import { deleteSession, recomputeRecords, saveSessionEdit } from "@/lib/data/mutations";
 import type { SessionFull } from "@/lib/data/queries";
+import { draftFromSession, savedDraft, toSessionEdit, validateDraft, type EditExercise, type SessionDraft } from "@/lib/data/session-edit";
 import { toLoggedSet, type ExerciseRow, type PersonalRecordRow, type SetLogRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
 import { formatMinutes, uuid } from "@/lib/utils";
 
-type Ex = SessionFull["exercises"][number];
+type Ex = EditExercise;
 
-function toLocalInput(iso: string) {
-  const d = new Date(iso);
-  return format(d, "yyyy-MM-dd'T'HH:mm");
-}
+const RECORDS_FAILED = "personal records couldn't be refreshed. They'll update the next time you save a workout with these exercises.";
 
 export function SessionEditor({ session, unit, library, records }: { session: SessionFull; unit: WeightUnit; library: ExerciseRow[]; records: PersonalRecordRow[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [name, setName] = useState(session.name);
-  const [notes, setNotes] = useState(session.notes ?? "");
-  const [start, setStart] = useState(toLocalInput(session.started_at));
-  const [minutes, setMinutes] = useState(session.ended_at ? Math.round((new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 60000) : 60);
-  const [items, setItems] = useState<Ex[]>(session.exercises);
+  // The latest saved state. Edit and Cancel always start from it.
+  const [saved, setSaved] = useState(() => draftFromSession(session));
+  const [name, setName] = useState(saved.name);
+  const [notes, setNotes] = useState(saved.notes);
+  const [start, setStart] = useState(saved.start);
+  const [minutes, setMinutes] = useState(saved.minutes);
+  const [items, setItems] = useState<Ex[]>(saved.items);
   const [picker, setPicker] = useState(false);
-  const duration = session.ended_at ? new Date(session.ended_at).getTime() - new Date(session.started_at).getTime() : 0;
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+
+  function load(d: SessionDraft) {
+    setName(d.name);
+    setNotes(d.notes);
+    setStart(d.start);
+    setMinutes(d.minutes);
+    setItems(d.items);
+  }
+
+  // Fresh server data (after router.refresh) becomes the saved state, without discarding edits in progress.
+  useEffect(() => {
+    const d = draftFromSession(session);
+    setSaved(d);
+    if (!editingRef.current) load(d);
+  }, [session]);
 
   const stats = useMemo(() => {
-    const ws = session.exercises.flatMap((e) => e.sets.filter((s) => s.completed && s.kind === "working"));
+    const ws = saved.items.flatMap((e) => e.sets.filter((s) => s.completed && s.kind === "working"));
     return { sets: ws.length, volume: ws.reduce((a, s) => a + Number(s.weight_kg ?? 0) * (s.reps ?? 0), 0) };
-  }, [session]);
+  }, [saved]);
 
   function patchSet(exId: string, setId: string, patch: Partial<SetLogRow>) {
     setItems((cur) => cur.map((e) => (e.id === exId ? { ...e, sets: e.sets.map((s) => (s.id === setId ? { ...s, ...patch } : s)) } : e)));
@@ -68,62 +84,56 @@ export function SessionEditor({ session, unit, library, records }: { session: Se
   }
 
   async function save() {
-    // Validate
-    for (const e of items) for (const s of e.sets) {
-      if (s.reps == null || s.reps < 1 || !Number.isInteger(s.reps)) return toast.error(`${e.exercise.name}: every set needs reps (whole number ≥ 1).`);
-      if (e.exercise.load_type === "external" && s.weight_kg == null) return toast.error(`${e.exercise.name}: enter a weight for every set.`);
-    }
-    if (!name.trim()) return toast.error("Name the workout.");
-    const startedAt = new Date(start);
-    if (Number.isNaN(startedAt.getTime())) return toast.error("Invalid date.");
-    if (!(minutes >= 1 && minutes <= 600)) return toast.error("Duration must be 1–600 minutes.");
+    const draft: SessionDraft = { name, notes, start, minutes, items };
+    const problem = validateDraft(draft);
+    if (problem) return toast.error(problem);
 
     setBusy(true);
     const db = createClient();
     try {
-      const keptEx = new Set(items.map((e) => e.id));
-      const removedEx = session.exercises.filter((e) => !keptEx.has(e.id)).map((e) => e.id);
-      const keptSets = new Set(items.flatMap((e) => e.sets.map((s) => s.id)));
-      const removedSets = session.exercises.flatMap((e) => e.sets).filter((s) => !keptSets.has(s.id) && keptEx.has(s.session_exercise_id)).map((s) => s.id);
-
-      const { error: e1 } = await db.from("workout_sessions").update({
-        name: name.trim(), notes: notes || null, started_at: startedAt.toISOString(),
-        ended_at: new Date(startedAt.getTime() + minutes * 60000).toISOString(),
-      }).eq("id", session.id);
-      if (e1) throw e1;
-      if (removedSets.length) { const { error } = await db.from("set_logs").delete().in("id", removedSets); if (error) throw error; }
-      if (removedEx.length) { const { error } = await db.from("session_exercises").delete().in("id", removedEx); if (error) throw error; }
-      const seRows = items.map((e, i) => ({ id: e.id, session_id: session.id, exercise_id: e.exercise_id, template_exercise_id: e.template_exercise_id, substituted_for: e.substituted_for, position: i, prescribed: e.prescribed, notes: e.notes }));
-      { const { error } = await db.from("session_exercises").upsert(seRows); if (error) throw error; }
-      const setRows = items.flatMap((e) => e.sets.map((s, i) => ({ ...s, session_exercise_id: e.id, session_id: session.id, position: i, completed: true, completed_at: s.completed_at ?? startedAt.toISOString() })));
-      if (setRows.length) { const { error } = await db.from("set_logs").upsert(setRows); if (error) throw error; }
-
-      const affected = new Map<string, ExerciseRow>();
-      for (const e of [...session.exercises, ...items]) affected.set(e.exercise_id, e.exercise);
-      await recomputeRecords(db, [...affected.values()]);
-      toast.success("Workout updated");
-      setEditing(false);
-      router.refresh();
+      await saveSessionEdit(db, session.id, toSessionEdit(draft));
     } catch (e) {
       toast.error((e as Error).message);
+      setBusy(false);
+      return;
+    }
+    const next = savedDraft(draft);
+    const affected = new Map<string, ExerciseRow>();
+    for (const e of [...saved.items, ...next.items]) affected.set(e.exercise_id, e.exercise);
+    setSaved(next);
+    load(next);
+    setEditing(false);
+    try {
+      await recomputeRecords(db, [...affected.values()]);
+      toast.success("Workout updated");
+    } catch (e) {
+      console.error(e);
+      toast.error(`Workout updated, but ${RECORDS_FAILED}`);
     } finally {
       setBusy(false);
+      router.refresh();
     }
   }
 
   async function remove() {
     if (!confirm("Delete this workout permanently? This cannot be undone.")) return;
     setBusy(true);
+    const db = createClient();
     try {
-      const db = createClient();
       await deleteSession(db, session.id);
-      await recomputeRecords(db, [...new Map(session.exercises.map((e) => [e.exercise_id, e.exercise])).values()]);
-      router.replace("/history");
-      router.refresh();
     } catch (e) {
       toast.error((e as Error).message);
       setBusy(false);
+      return;
     }
+    try {
+      await recomputeRecords(db, [...new Map(saved.items.map((e) => [e.exercise_id, e.exercise])).values()]);
+    } catch (e) {
+      console.error(e);
+      toast.error(`Workout deleted, but ${RECORDS_FAILED}`);
+    }
+    router.replace("/history");
+    router.refresh();
   }
 
   return (
@@ -136,7 +146,7 @@ export function SessionEditor({ session, unit, library, records }: { session: Se
           {editing ? (
             <Input value={name} onChange={(e) => setName(e.target.value)} className="h-11 text-[20px] font-semibold" />
           ) : (
-            <h1 className="text-[28px] font-semibold tracking-[-0.02em]">{session.name}</h1>
+            <h1 className="text-[28px] font-semibold tracking-[-0.02em]">{saved.name}</h1>
           )}
           {editing ? (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -148,15 +158,15 @@ export function SessionEditor({ session, unit, library, records }: { session: Se
             </div>
           ) : (
             <p className="mt-1 text-[14px] text-muted-foreground tabular">
-              {format(new Date(session.started_at), "EEEE d MMMM yyyy · HH:mm")} · {formatMinutes(duration)} · {stats.sets} sets · {formatVolume(stats.volume, unit)}
+              {format(new Date(saved.start), "EEEE d MMMM yyyy · HH:mm")} · {formatMinutes(saved.minutes * 60000)} · {stats.sets} sets · {formatVolume(stats.volume, unit)}
             </p>
           )}
         </div>
         {!editing ? (
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}><Pencil /> Edit</Button>
+          <Button variant="outline" size="sm" onClick={() => { load(saved); setEditing(true); }}><Pencil /> Edit</Button>
         ) : (
           <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setItems(session.exercises); setName(session.name); setNotes(session.notes ?? ""); }}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => { load(saved); setEditing(false); }}>Cancel</Button>
             <Button variant="primary" size="sm" onClick={save} disabled={busy}>{busy && <Loader2 className="animate-spin" />} Save</Button>
           </div>
         )}
@@ -228,7 +238,7 @@ export function SessionEditor({ session, unit, library, records }: { session: Se
 
       <div className="mt-6">
         <p className="mb-1.5 px-1 text-[13px] font-medium text-muted-foreground">Notes</p>
-        {editing ? <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /> : <p className="px-1 text-[14px] text-muted-foreground">{session.notes || "—"}</p>}
+        {editing ? <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /> : <p className="px-1 text-[14px] text-muted-foreground">{saved.notes || "—"}</p>}
       </div>
 
       {editing && (

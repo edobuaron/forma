@@ -6,7 +6,8 @@
 // - Ops are idempotent upserts/deletes on client-generated UUIDs: a retry or a double tap
 //   can never create a duplicate set.
 // - The pending queue is persisted to localStorage, so closing the tab before a write lands
-//   loses nothing: the queue is replayed on next load.
+//   loses nothing: the queue is replayed on next load. If storage fails (full, disabled), the
+//   queue reports that pending changes exist only in memory.
 // - Failed writes retry with exponential backoff.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -18,6 +19,9 @@ export interface SyncOp {
   row?: Record<string, unknown>;
 }
 export type SyncStatus = "idle" | "saving" | "error" | "offline";
+/** Where pending changes are kept until the server has them: device storage, or only this page's memory. */
+export type LocalCopy = "device" | "memory";
+type Listener = (s: SyncStatus, pending: number, local: LocalCopy) => void;
 
 const TABLE_ORDER: Record<SyncTable, number> = { workout_sessions: 0, session_exercises: 1, set_logs: 2 };
 
@@ -26,8 +30,10 @@ export class SyncQueue {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private flushing = false;
   private attempt = 0;
-  private listeners = new Set<(s: SyncStatus, pending: number) => void>();
+  private listeners = new Set<Listener>();
   status: SyncStatus = "idle";
+  /** Whether the last write of the pending queue to device storage succeeded. */
+  local: LocalCopy = "device";
 
   constructor(private db: SupabaseClient, private storageKey: string) {
     try {
@@ -45,23 +51,25 @@ export class SyncQueue {
     return this.ops.size;
   }
 
-  subscribe(fn: (s: SyncStatus, pending: number) => void) {
+  subscribe(fn: Listener) {
     this.listeners.add(fn);
-    fn(this.status, this.ops.size);
+    fn(this.status, this.ops.size, this.local);
     return () => this.listeners.delete(fn);
   }
 
   private emit(s: SyncStatus) {
     this.status = s;
-    this.listeners.forEach((l) => l(s, this.ops.size));
+    this.listeners.forEach((l) => l(s, this.ops.size, this.local));
   }
 
   private persist() {
     try {
       if (this.ops.size) localStorage.setItem(this.storageKey, JSON.stringify([...this.ops.values()]));
       else localStorage.removeItem(this.storageKey);
+      this.local = "device";
     } catch {
-      /* storage full or unavailable — DB remains source of truth */
+      // Storage full or unavailable: until the server has them, pending changes live only in memory.
+      this.local = "memory";
     }
   }
 

@@ -2,7 +2,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { detectPRs } from "@/lib/domain/prs";
 import { completedSetHistory, groupHistory } from "./queries";
-import { toExerciseConfig, type ExerciseRow, type ProfileRow } from "./types";
+import type { SessionEdit } from "./session-edit";
+import { toExerciseConfig, type ExerciseRow, type ProfileRow, type SetHistoryRow } from "./types";
 
 type DB = SupabaseClient;
 
@@ -41,20 +42,32 @@ export async function deleteSession(db: DB, sessionId: string) {
 /**
  * Rebuild personal records for the given exercises from their full history.
  * Records are derived data, so this is always safe to re-run (e.g. after correcting a past workout).
+ * The old records are replaced in one transaction. If the history changes while records are being
+ * computed (another tab or device saving), the server rejects the result and they are recomputed.
+ * Throws when the records could not be replaced; the previous records then stay as they were.
  */
 export async function recomputeRecords(db: DB, exercises: ExerciseRow[]) {
   if (exercises.length === 0) return;
   const ids = exercises.map((e) => e.id);
-  const rows = await completedSetHistory(db, { exerciseIds: ids });
+  for (let attempt = 1; ; attempt++) {
+    const basis = ok(await db.rpc("personal_record_basis", { p_exercise_ids: ids })) as string;
+    const rows = await completedSetHistory(db, { exerciseIds: ids });
+    const res = await db.rpc("replace_personal_records", { p_exercise_ids: ids, p_basis: basis, p_records: buildRecords(exercises, rows) });
+    if (res.error?.message !== "stale_history") return void ok(res);
+    if (attempt >= 3) throw new Error("Your history kept changing while personal records were updating.");
+  }
+}
+
+function buildRecords(exercises: ExerciseRow[], rows: SetHistoryRow[]) {
   const byEx = groupHistory(rows);
-  const inserts: Record<string, unknown>[] = [];
+  const out: Record<string, unknown>[] = [];
   for (const exRow of exercises) {
     const ex = toExerciseConfig(exRow);
     const sessions = [...(byEx.get(ex.id) ?? [])].reverse(); // oldest first
     const prior = [] as (typeof sessions)[number]["sets"];
     for (const s of sessions) {
       for (const pr of detectPRs(ex, s.sets, prior)) {
-        inserts.push({
+        out.push({
           exercise_id: ex.id, session_id: s.sessionId, type: pr.type, value: pr.value,
           load_kg: pr.loadKg, reps: pr.reps, previous: pr.previous, achieved_at: s.date,
         });
@@ -62,8 +75,21 @@ export async function recomputeRecords(db: DB, exercises: ExerciseRow[]) {
       prior.push(...s.sets);
     }
   }
-  ok(await db.from("personal_records").delete().in("exercise_id", ids));
-  if (inserts.length) ok(await db.from("personal_records").insert(inserts));
+  return out;
+}
+
+const EDIT_ERRORS: Record<string, string> = {
+  missing_reps: "every set needs reps (whole number ≥ 1).",
+  missing_weight: "enter a weight for every set.",
+  missing_assistance: "enter the assistance for every set (0 if none).",
+};
+
+/** Save an edited past workout. All-or-nothing: on any error the stored workout is unchanged. */
+export async function saveSessionEdit(db: DB, sessionId: string, edit: SessionEdit) {
+  const res = await db.rpc("save_session_edit", { p_session_id: sessionId, p_session: edit.session, p_exercises: edit.exercises });
+  const friendly = res.error && EDIT_ERRORS[res.error.message];
+  if (friendly) throw new Error(`${res.error!.details}: ${friendly}`);
+  ok(res);
 }
 
 export async function updateProfile(db: DB, id: string, patch: Partial<ProfileRow>) {
