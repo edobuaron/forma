@@ -13,7 +13,7 @@ import { compareSet, previousCounterpart } from "@/lib/domain/comparison";
 import { exerciseInsights } from "@/lib/domain/insights";
 import { headline, recommend } from "@/lib/domain/progression";
 import { prLabel, type PRType } from "@/lib/domain/prs";
-import { workingSets } from "@/lib/domain/sets";
+import { completedWorkingSets, workingSets } from "@/lib/domain/sets";
 import { formatWeight } from "@/lib/domain/units";
 import { completedSetHistory, exerciseRecords, getActiveProgram, getExercise, getProfile, groupHistory } from "@/lib/data/queries";
 import { toExerciseConfig, toPrescription } from "@/lib/data/types";
@@ -32,7 +32,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
   const history = groupHistory(rows).get(id) ?? []; // newest first
   const points = sessionPoints(cfg, history);
   const allSets = history.flatMap((h) => h.sets);
-  const ws = workingSets(allSets);
+  const ws = workingSets(allSets, cfg);
   const usedIn = (program?.templates ?? []).flatMap((t) => t.exercises.filter((e) => e.exercise_id === id).map((e) => ({ t, e })));
   const rx = usedIn[0] ? toPrescription({ sets: usedIn[0].e.sets, rep_min: usedIn[0].e.rep_min, rep_max: usedIn[0].e.rep_max, rest_s: usedIn[0].e.rest_s }) : toPrescription(null, ex);
   const rec = recommend(cfg, rx, history, { conservative: profile.progression_conservative });
@@ -84,7 +84,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
                 sub={showLoad && heaviest ? `× ${heaviest.reps} reps` : undefined} />
             </Card>
             <Card className="p-4">
-              {cfg.e1rmEligible && bestE1rm != null ? <Stat label="Best est. 1RM" value={formatWeight(bestE1rm, unit)} sub="Epley estimate" /> : <Stat label="Last session" value={format(new Date(last.date), "d MMM")} sub={`${workingSets(last.sets).length} sets`} />}
+              {cfg.e1rmEligible && bestE1rm != null ? <Stat label="Best est. 1RM" value={formatWeight(bestE1rm, unit)} sub="Epley estimate" /> : <Stat label="Last session" value={format(new Date(last.date), "d MMM")} sub={`${workingSets(last.sets, cfg).length} sets`} />}
             </Card>
           </div>
 
@@ -97,8 +97,8 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
             <Card>
               <CardHeader><CardTitle>Last session vs previous</CardTitle><span className="text-[12px] text-muted-foreground">{format(new Date(last.date), "d MMM")}</span></CardHeader>
               <CardContent className="space-y-1.5">
-                {workingSets(last.sets).map((s, i) => {
-                  const c = comparisonText(compareSet(s, prev ? previousCounterpart(prev.sets, i) : null, cfg), unit, cfg.loadType);
+                {completedWorkingSets(last.sets).map((s, i) => {
+                  const c = comparisonText(compareSet(s, prev ? previousCounterpart(prev.sets, i, cfg) : null, cfg), unit, cfg.loadType);
                   return (
                     <div key={i} className="flex items-center justify-between text-[14px]">
                       <span className="tabular"><span className="mr-3 text-muted-foreground">{i + 1}</span>{formatSetLong(s, cfg.loadType, unit)}</span>
@@ -156,7 +156,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
                   <li key={h.sessionId}>
                     <Link href={`/history/${h.sessionId}`} className="flex items-baseline justify-between gap-4 py-2.5 hover:opacity-80">
                       <span className="w-24 shrink-0 text-[13px] text-muted-foreground">{format(new Date(h.date), "d MMM yyyy")}</span>
-                      <span className="flex-1 text-right text-[14px] tabular">{formatSetsCompact(workingSets(h.sets), cfg.loadType, unit)}</span>
+                      <span className="flex-1 text-right text-[14px] tabular">{formatSetsCompact(workingSets(h.sets, cfg), cfg.loadType, unit)}</span>
                     </Link>
                   </li>
                 ))}

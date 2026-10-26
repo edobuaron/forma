@@ -25,7 +25,7 @@ const MIN_SESSIONS_TREND = 3;
 const MIN_SESSIONS_PLATEAU = 4;
 
 function repsAtLoad(h: ExercisePerformance, ex: ExerciseConfig, load: number) {
-  return workingSets(h.sets)
+  return workingSets(h.sets, ex)
     .filter((s) => sameLoad(effectiveLoad(s, ex), load))
     .reduce((a, s) => a + (s.reps ?? 0), 0);
 }
@@ -33,7 +33,7 @@ function repsAtLoad(h: ExercisePerformance, ex: ExerciseConfig, load: number) {
 /** Exercise-level insights from that exercise's completed history (newest first). */
 export function exerciseInsights(ex: ExerciseConfig, history: ExercisePerformance[]): Insight[] {
   if (ex.category === "skill") return [];
-  const sessions = history.filter((h) => workingSets(h.sets).length > 0);
+  const sessions = history.filter((h) => workingSets(h.sets, ex).length > 0);
   const out: Insight[] = [];
   if (sessions.length < MIN_SESSIONS_TREND) return out;
 
@@ -43,12 +43,12 @@ export function exerciseInsights(ex: ExerciseConfig, history: ExercisePerformanc
   if (load != null) {
     const comparable = recent.every((h) => {
       const l = dominantLoad(h.sets, ex);
-      return l != null && sameLoad(l, load) && workingSets(h.sets).length === workingSets(recent[0].sets).length;
+      return l != null && sameLoad(l, load) && workingSets(h.sets, ex).length === workingSets(recent[0].sets, ex).length;
     });
     if (comparable) {
       const reps = recent.map((h) => repsAtLoad(h, ex, load)); // newest first
       const declining = reps[0] < reps[1] && reps[1] < reps[2] && reps[2] - reps[0] >= 2;
-      const rirs = recent.flatMap((h) => workingSets(h.sets).map((s) => s.rir)).filter((r): r is number => r != null);
+      const rirs = recent.flatMap((h) => workingSets(h.sets, ex).map((s) => s.rir)).filter((r): r is number => r != null);
       const bwChange = bodyweightChange(recent);
       if (declining) {
         out.push({

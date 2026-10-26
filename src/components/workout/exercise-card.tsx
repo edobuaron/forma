@@ -72,7 +72,7 @@ export function ExerciseCard(p: Props) {
     });
   }
 
-  const prev = history.find((h) => workingSets(h.sets).length > 0) ?? null;
+  const prev = history.find((h) => workingSets(h.sets, ex).length > 0) ?? null;
   const prevSets = prev?.sets ?? [];
   const rx = item.prescribed;
   const prevSummary = prev ? summarisePrevious(prevSets, prev.prescription?.sets ?? null) : null;
@@ -137,7 +137,7 @@ export function ExerciseCard(p: Props) {
             {prev ? (
               <button aria-haspopup="dialog" onClick={() => setShowPrev(true)} className={cn("-mx-1 block min-h-11 w-[calc(100%+0.5rem)] rounded-md px-1 py-1.5 text-left text-[13px] text-muted-foreground", focusRing)}>
                 <span className="font-medium text-foreground/80">Last time</span>{" "}
-                <span className="tabular">{formatSetsCompact(workingSets(prevSets), ex.loadType, unit)}</span>
+                <span className="tabular">{formatSetsCompact(workingSets(prevSets, ex), ex.loadType, unit)}</span>
                 {prevSummary?.incomplete && <span> · {prevSummary.completedWorkingSets}/{prevSummary.prescribedSets} sets</span>}
                 {item.substituted_for && <span> · substituted</span>}
               </button>
@@ -189,7 +189,7 @@ export function ExerciseCard(p: Props) {
               const isWarm = s.kind === "warmup";
               if (!isWarm) workingIdx++;
               const idx = workingIdx;
-              const prevSet = isWarm ? null : previousCounterpart(prevSets, idx);
+              const prevSet = isWarm ? null : previousCounterpart(prevSets, idx, ex);
               const targetReps = isWarm ? null : rec?.targetReps?.[idx] ?? prevSet?.reps ?? null;
               const suggestedLoad = isWarm ? null : rec?.targetLoadKg ?? (assisted ? prevSet?.assistanceKg : prevSet?.weightKg) ?? null;
               const loadVal = assisted ? s.assistance_kg : s.weight_kg;

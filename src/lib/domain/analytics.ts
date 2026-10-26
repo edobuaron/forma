@@ -18,7 +18,7 @@ export interface SessionPoint {
 export function sessionPoints(ex: ExerciseConfig, history: ExercisePerformance[]): SessionPoint[] {
   return history
     .map((h) => {
-      const ws = workingSets(h.sets);
+      const ws = workingSets(h.sets, ex);
       if (ws.length === 0) return null;
       const loads = ws.map((s) => effectiveLoad(s, ex));
       const top = Math.max(...loads);
@@ -42,7 +42,7 @@ export function sessionPoints(ex: ExerciseConfig, history: ExercisePerformance[]
 /** Best reps achieved at each load ever used — a rep-PR table. */
 export function bestRepsByLoad(ex: ExerciseConfig, sets: LoggedSet[]): { loadKg: number; reps: number }[] {
   const m = new Map<number, number>();
-  for (const s of workingSets(sets)) {
+  for (const s of workingSets(sets, ex)) {
     const l = effectiveLoad(s, ex);
     m.set(l, Math.max(m.get(l) ?? 0, s.reps!));
   }
@@ -51,7 +51,7 @@ export function bestRepsByLoad(ex: ExerciseConfig, sets: LoggedSet[]): { loadKg:
 
 /** Highest load lifted for at least `minReps` reps (rep-range strength). */
 export function bestLoadForReps(ex: ExerciseConfig, sets: LoggedSet[], minReps: number): number | null {
-  const loads = workingSets(sets).filter((s) => s.reps! >= minReps).map((s) => effectiveLoad(s, ex));
+  const loads = workingSets(sets, ex).filter((s) => s.reps! >= minReps).map((s) => effectiveLoad(s, ex));
   return loads.length ? Math.max(...loads) : null;
 }
 

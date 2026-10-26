@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/dropdown";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { previousCounterpart } from "@/lib/domain/comparison";
 import { recommend, type Recommendation } from "@/lib/domain/progression";
 import type { ExercisePerformance } from "@/lib/domain/types";
 import { dismissRecommendation, discardWorkout, finishWorkout, recomputeRecords } from "@/lib/data/mutations";
 import type { SessionFull } from "@/lib/data/queries";
 import { recentHistory } from "@/lib/data/queries";
-import { SyncQueue, type SyncOp, type SyncStatus } from "@/lib/data/sync-queue";
+import { SyncQueue, type LocalCopy, type SyncOp, type SyncStatus } from "@/lib/data/sync-queue";
 import { toExerciseConfig, toPrescription, type ExerciseRow, type ProfileRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
 import { formatDuration, uuid } from "@/lib/utils";
@@ -94,7 +95,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
   const [items, setItems] = useState<WExercise[]>(() => toWorkout(initialSession));
   const [history, setHistory] = useState<Record<string, ExercisePerformance[]>>(initialHistory);
   const [notes, setNotes] = useState(initialSession.notes ?? "");
-  const [sync, setSync] = useState<{ status: SyncStatus; pending: number }>({ status: "idle", pending: 0 });
+  const [sync, setSync] = useState<{ status: SyncStatus; pending: number; local: LocalCopy }>({ status: "idle", pending: 0, local: "device" });
   const [rest, setRestState] = useState<RestState | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [picker, setPicker] = useState<{ mode: "add" } | { mode: "replace"; itemId: string } | null>(null);
@@ -122,7 +123,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
       if (n) setNotes(String(n.row!.notes ?? ""));
       void q.flush();
     }
-    const unsub = q.subscribe((status, pending) => setSync({ status, pending }));
+    const unsub = q.subscribe((status, pending, local) => setSync({ status, pending, local }));
     const onHide = () => { if (document.visibilityState === "hidden") void q.flush(); };
     document.addEventListener("visibilitychange", onHide);
     const beforeUnload = (e: BeforeUnloadEvent) => { if (q.pending > 0) { void q.flush(); e.preventDefault(); } };
@@ -192,8 +193,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
     const assisted = cfg.loadType === "assisted";
     const workIdx = item.sets.filter((s) => s.kind === "working").findIndex((s) => s.id === setId);
     const prev = (history[item.exercise_id] ?? [])[0];
-    const prevWorking = prev?.sets.filter((s) => s.kind === "working" && s.completed) ?? [];
-    const prevSet = workIdx >= 0 ? prevWorking[workIdx] : undefined;
+    const prevSet = workIdx >= 0 && prev ? previousCounterpart(prev.sets, workIdx, cfg) : null;
     const reps = set.reps ?? (set.kind === "working" ? rec?.targetReps?.[workIdx] ?? prevSet?.reps ?? null : null);
     if (reps == null) {
       toast("Enter reps first");
@@ -202,6 +202,11 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
     const patch: Partial<WSet> = { completed: true, completed_at: backdated ? initialSession.started_at : new Date().toISOString(), reps };
     if (assisted) {
       patch.assistance_kg = set.assistance_kg ?? (set.kind === "working" ? rec?.targetLoadKg ?? prevSet?.assistanceKg ?? null : null);
+      // Missing assistance is not "no assistance": 0 has to be entered explicitly.
+      if (patch.assistance_kg == null) {
+        toast("Enter the assistance first (0 if none)");
+        return;
+      }
     } else {
       const bw = cfg.loadType === "bodyweight" || cfg.loadType === "weighted_bodyweight";
       patch.weight_kg = set.weight_kg ?? (set.kind === "working" ? rec?.targetLoadKg ?? prevSet?.weightKg ?? null : null) ?? (bw ? 0 : null);
@@ -342,11 +347,20 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
     try {
       const q = queueRef.current!;
       for (let i = 0; i < 5 && !(await q.flush()); i++) await new Promise((r) => setTimeout(r, 800));
-      if (q.pending > 0) throw new Error("Couldn't reach the server. Your sets are saved on this device — try again when you're online.");
+      if (q.pending > 0) {
+        throw new Error(q.local === "device"
+          ? "Couldn't reach the server. Your sets are saved on this device — try again when you're online."
+          : "Couldn't reach the server, and this device couldn't store your sets. Keep this page open and try again when you're online.");
+      }
       const mins = Number(minutes);
       await finishWorkout(db, sessionId, notes || null, backdated ? new Date(startedAt.getTime() + (mins > 0 ? mins : estMinutes) * 60000) : new Date());
       const exs = [...new Map(items.filter((i) => i.sets.some((s) => s.completed)).map((i) => [i.exercise_id, i.exercise])).values()];
-      try { await recomputeRecords(db, exs); } catch (e) { console.error(e); }
+      try {
+        await recomputeRecords(db, exs);
+      } catch (e) {
+        console.error(e);
+        toast.error("Workout saved, but personal records couldn't be updated. They'll update the next time you save a workout with these exercises.");
+      }
       try { localStorage.removeItem(restKey); } catch { /* noop */ }
       router.replace(`/workout/${sessionId}/summary`);
       router.refresh();
@@ -389,8 +403,9 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
               <span aria-live="polite" className="flex items-center gap-1">
                 ·{" "}
                 {sync.status === "saving" ? (<><Loader2 className="size-3 animate-spin" /> Saving</>)
-                  : sync.status === "error" || sync.status === "offline" ? (<span className="flex items-center gap-1 text-negative"><CloudOff className="size-3" /> Saved on device · retrying</span>)
-                  : (<><Cloud className="size-3" /> Saved</>)}
+                  : sync.pending === 0 ? (<><Cloud className="size-3" /> Saved</>)
+                  : sync.local === "device" ? (<span className="flex items-center gap-1 text-negative"><CloudOff className="size-3" /> Saved on device · retrying</span>)
+                  : (<span className="flex items-center gap-1 text-negative"><CloudOff className="size-3" /> Not saved yet · keep page open</span>)}
               </span>
             </p>
           </div>

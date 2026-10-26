@@ -9,3 +9,4 @@ $P -d forma_test -f supabase/tests/00_stub_supabase.sql
 for f in supabase/migrations/*.sql; do $P -d forma_test -f "$f"; done
 $P -d forma_test -f supabase/tests/01_rls_test.sql
 $P -d forma_test -f supabase/tests/02_workout_flow_test.sql
+$P -d forma_test -f supabase/tests/03_edit_and_records_test.sql

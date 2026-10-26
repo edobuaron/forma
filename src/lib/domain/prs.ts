@@ -23,8 +23,8 @@ export interface PersonalRecord {
  * - e1RM only for eligible lifts within 1–12 reps, and must beat the old best by > 0.5 %
  */
 export function detectPRs(ex: ExerciseConfig, current: LoggedSet[], history: LoggedSet[]): PersonalRecord[] {
-  const cur = workingSets(current);
-  const hist = workingSets(history);
+  const cur = workingSets(current, ex);
+  const hist = workingSets(history, ex);
   const out: PersonalRecord[] = [];
   if (cur.length === 0) return out;
 

@@ -43,7 +43,7 @@ function loadOf(sets: LoggedSet[], ex: ExerciseConfig): number | null {
 }
 
 function setsAt(sets: LoggedSet[], ex: ExerciseConfig, load: number): LoggedSet[] {
-  return workingSets(sets).filter((s) => sameLoad(effectiveLoad(s, ex), load));
+  return workingSets(sets, ex).filter((s) => sameLoad(effectiveLoad(s, ex), load));
 }
 
 function totalReps(sets: LoggedSet[]): number {
@@ -67,7 +67,7 @@ export function recommend(
 ): Recommendation {
   const conservative = opts.conservative ?? true;
   const { repMin, repMax, sets: required } = prescription;
-  const sessions = history.filter((h) => workingSets(h.sets).length > 0);
+  const sessions = history.filter((h) => workingSets(h.sets, ex).length > 0);
   const last = sessions[0];
 
   if (!last) {
@@ -101,7 +101,7 @@ export function recommend(
   }
 
   // Incomplete last session → repeat.
-  const completedCount = workingSets(last.sets).length;
+  const completedCount = workingSets(last.sets, ex).length;
   const lastRequired = last.prescription?.sets ?? required;
   if (completedCount < Math.min(required, lastRequired)) {
     return {

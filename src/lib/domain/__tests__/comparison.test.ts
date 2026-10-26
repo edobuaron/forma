@@ -48,10 +48,11 @@ describe("compareSet", () => {
 });
 
 describe("previousCounterpart", () => {
+  const e = ex();
   it("pairs by working-set index, skipping warm-ups; missing sets → null", () => {
     const prev = [set(40, 10, { kind: "warmup" }), set(60, 10), set(60, 9)];
-    expect(previousCounterpart(prev, 0)?.reps).toBe(10);
-    expect(previousCounterpart(prev, 1)?.reps).toBe(9);
-    expect(previousCounterpart(prev, 2)).toBeNull();
+    expect(previousCounterpart(prev, 0, e)?.reps).toBe(10);
+    expect(previousCounterpart(prev, 1, e)?.reps).toBe(9);
+    expect(previousCounterpart(prev, 2, e)).toBeNull();
   });
 });

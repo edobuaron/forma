@@ -9,7 +9,7 @@ import { comparisonText, formatSetLong } from "@/components/workout/format";
 import { compareSet, previousCounterpart } from "@/lib/domain/comparison";
 import { headline, recommend } from "@/lib/domain/progression";
 import { prLabel, type PRType } from "@/lib/domain/prs";
-import { workingSets } from "@/lib/domain/sets";
+import { completedWorkingSets } from "@/lib/domain/sets";
 import { formatVolume, formatWeight } from "@/lib/domain/units";
 import { getProfile, getSessionFull, recentHistory, sessionRecords } from "@/lib/data/queries";
 import { toExerciseConfig, toLoggedSet, toPrescription } from "@/lib/data/types";
@@ -40,8 +40,9 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
     const cfg = toExerciseConfig(e.exercise);
     const prev = before.byExercise.get(e.exercise_id)?.[0];
     const cur = e.sets.map(toLoggedSet);
-    const ws = workingSets(cur);
-    const cmps = ws.map((s, i) => compareSet(s, prev ? previousCounterpart(prev.sets, i) : null, cfg));
+    // Pair by position; a set without a logged load shows no comparison rather than a false one.
+    const ws = completedWorkingSets(cur);
+    const cmps = ws.map((s, i) => compareSet(s, prev ? previousCounterpart(prev.sets, i, cfg) : null, cfg));
     const improved = cmps.filter((c) => c.status === "improved").length;
     const below = cmps.filter((c) => c.status === "below").length;
     const rec = recommend(cfg, toPrescription(e.prescribed, e.exercise), withThis.byExercise.get(e.exercise_id) ?? [], { conservative: profile.progression_conservative });
