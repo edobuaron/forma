@@ -26,9 +26,7 @@ export async function startWorkout(db: DB, templateId: string | null, opts: { na
 }
 
 export async function finishWorkout(db: DB, sessionId: string, notes: string | null, endedAt = new Date()) {
-  // Uncompleted sets are not part of the record.
-  ok(await db.from("set_logs").delete().eq("session_id", sessionId).eq("completed", false));
-  ok(await db.from("workout_sessions").update({ status: "completed", ended_at: endedAt.toISOString(), notes }).eq("id", sessionId));
+  ok(await db.rpc("finish_workout", { p_session_id: sessionId, p_notes: notes, p_ended_at: endedAt.toISOString() }));
 }
 
 export async function discardWorkout(db: DB, sessionId: string) {

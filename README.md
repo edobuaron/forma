@@ -108,3 +108,17 @@ src/app/             routes (App Router); /api/export for backups
 supabase/migrations  schema, RLS, seed, history view, RPCs
 supabase/tests       database tests
 ```
+
+## Account recovery and settings
+
+Settings includes password changes, revoking other device sessions, and a device-local RIR visibility preference. The sign-in page offers **Forgot password?**. Recovery uses Supabase's PKCE email flow, so open the email link in the same browser that requested it. Expired links offer a new request; failed requests never claim an email was delivered. Passwords are handled only by Supabase Auth and are never stored in the application database.
+
+Before deploying this update:
+
+- Apply migrations `20261026000006_atomic_edits_and_records.sql` and `20261026000007_finish_workout.sql` in order if they are pending. The updated app requires these RPCs.
+- In Supabase Auth URL Configuration, allow `https://<your-host>/auth/callback?next=/auth/update-password` and the equivalent localhost URL. Keep the existing sign-in callback allowed too.
+- The reset email template must use Supabase's `{{ .ConfirmationURL }}` link so the callback receives the code. Configure SMTP and test delivery on your deployment; local automated tests mock Auth and do not send messages.
+- Verify requesting recovery, opening the email, saving a new password, signing in with it, and retrying an expired link. If Secure Password Change requires reauthentication, the form supports an emailed confirmation code.
+- Other-device sign-out revokes refresh sessions; existing access tokens remain usable until expiry.
+
+Reference: [Supabase password recovery](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail). JSON export is available; in-app backup restore is not yet implemented.

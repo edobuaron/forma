@@ -7,7 +7,7 @@ import type * as React from "react";
 export function MenuCheckboxItem({ children, ...p }: React.ComponentProps<typeof M.CheckboxItem>) {
   return (
     <M.CheckboxItem
-      className="flex h-10 cursor-default select-none items-center gap-2.5 rounded-sm px-2.5 text-[14px] outline-none data-[highlighted]:bg-muted [&_svg]:size-4 [&_svg]:text-muted-foreground"
+      className="flex min-h-11 cursor-default select-none items-center gap-2.5 rounded-sm px-2.5 text-[14px] outline-none data-[highlighted]:bg-muted [&_svg]:size-4 [&_svg]:text-muted-foreground"
       {...p}
     >
       {children}

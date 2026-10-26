@@ -8,6 +8,7 @@ export function Segmented<T extends string>({
     <div role="tablist" className={cn("inline-flex rounded-md bg-subtle p-0.5", className)}>
       {options.map((o) => (
         <button
+          type="button"
           key={o.value}
           role="tab"
           aria-selected={value === o.value}

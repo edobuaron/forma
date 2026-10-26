@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import { safeRedirect } from "@/lib/auth/validation";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -21,7 +23,7 @@ export function LoginForm({ next, initialError }: { next?: string; initialError?
   const [error, setError] = useState<string | null>(initialError ? "That sign-in link is invalid or expired." : null);
   const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
-  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const safeNext = safeRedirect(next);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,9 +62,11 @@ export function LoginForm({ next, initialError }: { next?: string; initialError?
         options={[{ value: "signin", label: "Sign in" }, { value: "signup", label: "Create account" }, { value: "magic", label: "Email link" }]}
       />
       <div className="space-y-2.5">
-        <Input type="email" inputMode="email" autoComplete="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" />
+        <Input aria-label="Email" required type="email" inputMode="email" autoComplete="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" />
         {mode !== "magic" && (
           <Input
+            aria-label="Password"
+            required
             type="password"
             autoComplete={mode === "signin" ? "current-password" : "new-password"}
             placeholder="Password"
@@ -72,6 +76,7 @@ export function LoginForm({ next, initialError }: { next?: string; initialError?
           />
         )}
       </div>
+      {mode === "signin" && <Link href="/auth/reset-password" className="flex min-h-11 items-center text-sm underline">Forgot password?</Link>}
       {error && <p className="text-[13px] text-negative">{error}</p>}
       {notice && <p className="text-[13px] text-positive">{notice}</p>}
       <Button type="submit" variant="primary" size="lg" className="w-full" disabled={busy}>

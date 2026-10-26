@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { displayToKg, kgToDisplay } from "@/lib/domain/units";
+import { AccountSettings } from "./account-settings";
+import { useShowRir } from "@/components/workout/rir-visibility";
 import { updateProfile } from "@/lib/data/mutations";
 import type { ProfileRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
@@ -31,14 +33,18 @@ function Row({ label, sub, children }: { label: string; sub?: string; children: 
   );
 }
 
-export function SettingsForm({ profile }: { profile: ProfileRow }) {
+export function SettingsForm({ profile, email }: { profile: ProfileRow; email?: string }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [p, setP] = useState(profile);
+  const [saving, setSaving] = useState(false);
+  const [showRir, setShowRir] = useShowRir();
   useEffect(() => setMounted(true), []);
 
   async function save(patch: Partial<ProfileRow>) {
+    if (saving) return;
+    setSaving(true);
     const prev = p;
     setP({ ...p, ...patch });
     try {
@@ -47,16 +53,18 @@ export function SettingsForm({ profile }: { profile: ProfileRow }) {
     } catch (e) {
       setP(prev);
       toast.error((e as Error).message);
-    }
+    } finally { setSaving(false); }
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-7">
+      <AccountSettings email={email} />
+      <fieldset disabled={saving} className="min-w-0 space-y-7">
       <Section title="Appearance">
         <Row label="Theme" sub="System follows your device setting">
           {mounted && (
             <Segmented value={(theme as "light" | "dark" | "system") ?? "system"} onChange={setTheme} options={[
-              { value: "light", label: <Sun className="size-4" /> }, { value: "dark", label: <Moon className="size-4" /> }, { value: "system", label: <Monitor className="size-4" /> },
+              { value: "light", label: <span aria-label="Light theme"><Sun aria-hidden className="size-4" /><span className="sr-only">Light</span></span> }, { value: "dark", label: <span aria-label="Dark theme"><Moon aria-hidden className="size-4" /><span className="sr-only">Dark</span></span> }, { value: "system", label: <span aria-label="System theme"><Monitor aria-hidden className="size-4" /><span className="sr-only">System</span></span> },
             ]} />
           )}
         </Row>
@@ -64,49 +72,50 @@ export function SettingsForm({ profile }: { profile: ProfileRow }) {
 
       <Section title="Profile">
         <Row label="Display name">
-          <Input defaultValue={p.display_name ?? ""} className="h-9 w-40 text-right" onBlur={(e) => e.target.value !== (p.display_name ?? "") && save({ display_name: e.target.value || null })} />
+          <Input aria-label="Display name" maxLength={120} defaultValue={p.display_name ?? ""} className="h-9 w-40 text-right" onBlur={(e) => e.target.value !== (p.display_name ?? "") && save({ display_name: e.target.value || null })} />
         </Row>
         <Row label="Bodyweight" sub="Recorded with each workout for pull-up context">
           <div className="flex items-center gap-2">
-            <Input inputMode="decimal" defaultValue={p.bodyweight_kg != null ? kgToDisplay(Number(p.bodyweight_kg), p.unit) : ""} className="h-9 w-20 text-right"
-              onBlur={(e) => { const v = e.target.value.trim(); const n = Number(v.replace(",", ".")); if (v === "") save({ bodyweight_kg: null }); else if (Number.isFinite(n) && n > 20) save({ bodyweight_kg: displayToKg(n, p.unit) }); else toast.error("Enter a valid bodyweight"); }} />
+            <Input aria-label="Bodyweight" key={`${p.unit}:${p.bodyweight_kg}`} inputMode="decimal" defaultValue={p.bodyweight_kg != null ? kgToDisplay(Number(p.bodyweight_kg), p.unit) : ""} className="h-9 w-20 text-right"
+              onBlur={(e) => { const v = e.target.value.trim(); const n = Number(v.replace(",", ".")); if (v === "") save({ bodyweight_kg: null }); else if (Number.isFinite(n) && displayToKg(n, p.unit) >= 20 && displayToKg(n, p.unit) <= 400) save({ bodyweight_kg: displayToKg(n, p.unit) }); else toast.error("Enter a valid bodyweight"); }} />
             <span className="text-[13px] text-muted-foreground">{p.unit}</span>
           </div>
         </Row>
       </Section>
 
       <Section title="Training">
+        <Row label="Show RIR inputs" sub="Reps in reserve; hiding inputs keeps logged values. Saved on this device."><Switch aria-label="Show RIR inputs" checked={showRir} onCheckedChange={setShowRir} /></Row>
         <Row label="Weight unit" sub="Data is stored in kg; display converts">
           <Segmented value={p.unit} onChange={(u) => save({ unit: u })} options={[{ value: "kg", label: "kg" }, { value: "lb", label: "lb" }]} />
         </Row>
         <Row label="Default rest" sub="Used when an exercise has no rest set">
           <div className="flex items-center gap-2">
-            <Input inputMode="numeric" defaultValue={p.default_rest_s} className="h-9 w-20 text-right"
+            <Input aria-label="Default rest in seconds" inputMode="numeric" defaultValue={p.default_rest_s} className="h-9 w-20 text-right"
               onBlur={(e) => { const n = Number(e.target.value); if (Number.isInteger(n) && n >= 0 && n <= 1800) save({ default_rest_s: n }); else toast.error("0–1800 seconds"); }} />
             <span className="text-[13px] text-muted-foreground">sec</span>
           </div>
         </Row>
         <Row label="Start rest timer automatically" sub="After completing a working set">
-          <Switch checked={p.auto_rest_timer} onCheckedChange={(c) => save({ auto_rest_timer: c })} />
+          <Switch aria-label="Start rest timer automatically" checked={p.auto_rest_timer} onCheckedChange={(c) => save({ auto_rest_timer: c })} />
         </Row>
         <Row label="Rest timer sound" sub="Plays when rest ends (app must be open)">
-          <Switch checked={p.rest_sound} onCheckedChange={(c) => save({ rest_sound: c })} />
+          <Switch aria-label="Rest timer sound" checked={p.rest_sound} onCheckedChange={(c) => save({ rest_sound: c })} />
         </Row>
         <Row label="Conservative progression" sub="Require a rep in reserve before suggesting more load">
-          <Switch checked={p.progression_conservative} onCheckedChange={(c) => save({ progression_conservative: c })} />
+          <Switch aria-label="Conservative progression" checked={p.progression_conservative} onCheckedChange={(c) => save({ progression_conservative: c })} />
         </Row>
         <Link href="/exercises" className="flex min-h-14 items-center justify-between px-4 hover:bg-muted/60">
           <span><span className="block text-[15px]">Equipment increments & exercise names</span><span className="block text-[12.5px] text-muted-foreground">Edit per exercise in the library</span></span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
         <Link href="/programs" className="flex min-h-14 items-center justify-between px-4 hover:bg-muted/60">
-          <span><span className="block text-[15px]">Weekly schedule</span><span className="block text-[12.5px] text-muted-foreground">Set training days in your program</span></span>
+          <span><span className="block text-[15px]">Workout program</span><span className="block text-[12.5px] text-muted-foreground">Edit workouts, exercises and prescriptions</span></span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
       </Section>
 
       <Section title="Your data">
-        <Row label="Full backup" sub="Everything, as JSON — re-importable and documented">
+        <Row label="Full backup" sub="Download your data as JSON. In-app restore is not yet available.">
           <Button asChild variant="outline" size="sm"><a href="/api/export?format=json"><Download /> JSON</a></Button>
         </Row>
         <Row label="Set log" sub="One row per set, for spreadsheets">
@@ -117,8 +126,9 @@ export function SettingsForm({ profile }: { profile: ProfileRow }) {
         </Row>
       </Section>
 
+      </fieldset>
       <form action="/auth/signout" method="post">
-        <Button type="submit" variant="ghost" className="w-full text-muted-foreground"><LogOut /> Sign out</Button>
+        <Button type="submit" variant="ghost" className="w-full text-muted-foreground"><LogOut /> Sign out this device</Button>
       </form>
     </div>
   );

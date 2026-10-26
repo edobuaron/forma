@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/dropdown";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { reconcileCompletion, setProblem } from "@/lib/domain/set-validation";
 import { previousCounterpart } from "@/lib/domain/comparison";
 import { recommend, type Recommendation } from "@/lib/domain/progression";
 import type { ExercisePerformance } from "@/lib/domain/types";
@@ -177,7 +178,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
 
   function onSetChange(item: WExercise, setId: string, patch: Partial<WSet>) {
     const set = item.sets.find((s) => s.id === setId)!;
-    const next = { ...set, ...patch };
+    const next = reconcileCompletion({ ...set, ...patch }, item.exercise.load_type);
+    if (set.completed && !next.completed && setProblem(next, item.exercise.load_type)) toast("Set marked incomplete. Fill in the required values and complete it again.");
     updateItem(item.id, (i) => ({ ...i, sets: i.sets.map((s) => (s.id === setId ? next : s)) }));
     enqueueSet(item, next);
   }
@@ -215,6 +217,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
         return;
       }
     }
+    const problem = setProblem({ ...set, ...patch }, cfg.loadType);
+    if (problem) { toast(problem); return; }
     onSetChange(item, setId, patch);
     if (profile.auto_rest_timer && !backdated && set.kind === "working") {
       const restS = item.prescribed.rest_s ?? item.exercise.default_rest_s ?? profile.default_rest_s;
@@ -343,6 +347,11 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
   }, [items]);
 
   async function finish() {
+    for (const item of items) for (const set of item.sets) {
+      if (!set.completed) continue;
+      const problem = setProblem(set, item.exercise.load_type);
+      if (problem) { toast.error(`${item.exercise.name}: ${problem}`); return; }
+    }
     setBusy(true);
     try {
       const q = queueRef.current!;
