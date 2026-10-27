@@ -1,0 +1,5 @@
+name,aliases,equipment,load_type,weight_entry,primary_muscles,secondary_muscles,category,sets,rep_min,rep_max,rest_seconds,increment_kg,e1rm,instructions,notes
+Landmine Press,landmine shoulder press,barbell,external,total,front_delts;upper_chest,triceps,compound,3,8,12,120,2.5,no,"Half-kneeling or standing; press up and slightly forward.",
+Dumbbell Pullover,,dumbbell,external,per_dumbbell,lats;chest,triceps,isolation,3,10,15,90,,no,,
+Ring Dip,,bodyweight,bodyweight,added,chest;triceps,front_delts,bodyweight,3,5,10,120,,no,,"Enter 0 kg for bodyweight only."
+Assisted Chin-Up (Band),,bodyweight,assisted,assistance,lats;biceps,upper_back,bodyweight,3,5,10,120,,no,,Log the band's rating as assistance.

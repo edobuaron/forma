@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ShortfallReason } from "@/lib/domain/types";
 import { detectPRs } from "@/lib/domain/prs";
 import { completedSetHistory, groupHistory } from "./queries";
+import type { ExerciseDraft } from "@/lib/catalog/import";
 import type { SessionEdit } from "./session-edit";
 import { toExerciseConfig, type ExerciseRow, type ProfileRow, type SetHistoryRow } from "./types";
 
@@ -103,7 +104,8 @@ export async function dismissRecommendation(db: DB, ruleKey: string, evidenceSes
 }
 
 // ---------- exercises ----------
-export type ExerciseInput = Omit<ExerciseRow, "id" | "user_id" | "created_at" | "updated_at" | "archived_at" | "slug"> & { slug?: string };
+export type ExerciseInput = Omit<ExerciseRow,
+  "id" | "user_id" | "created_at" | "updated_at" | "archived_at" | "slug" | "catalog_slug" | "catalog_version" | "source"> & { slug?: string };
 
 function slugify(s: string) {
   return s.toLowerCase().normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/[\s_]+/g, "-").slice(0, 60) || "exercise";
@@ -120,6 +122,34 @@ export async function updateExercise(db: DB, id: string, patch: Partial<Exercise
 
 export async function archiveExercise(db: DB, id: string, archived: boolean) {
   ok(await db.from("exercises").update({ archived_at: archived ? new Date().toISOString() : null }).eq("id", id));
+}
+
+// ---------- setup & catalog (migration 009) ----------
+/** First-run setup. Safe to retry: once setup is recorded, later calls create nothing. */
+export async function completeOnboarding(db: DB, choice: "empty" | "starter", opts: { displayName?: string | null; unit?: "kg" | "lb" | null } = {}) {
+  return ok(await db.rpc("complete_onboarding", {
+    p_choice: choice, p_display_name: opts.displayName ?? null, p_unit: opts.unit ?? null,
+  })) as { status: "set_up" | "already_set_up"; choice: string };
+}
+
+export interface CatalogAddResult {
+  added: { slug: string; name: string; id: string }[];
+  skipped: { slug: string; name: string; existing_id: string; existing_name: string; archived: boolean }[];
+}
+
+/** Copy catalog entries into the library. Never changes programs; skips what the library already has. */
+export async function addCatalogExercises(db: DB, slugs: string[]) {
+  return ok(await db.rpc("add_catalog_exercises", { p_slugs: slugs })) as CatalogAddResult;
+}
+
+export interface ImportResult {
+  added: { name: string; id: string }[];
+  skipped: { name: string; existing_id: string; existing_name: string }[];
+}
+
+/** Insert previewed import rows. All-or-nothing; names already in the library are skipped, never overwritten. */
+export async function importExercises(db: DB, rows: ExerciseDraft[]) {
+  return ok(await db.rpc("import_exercises", { p_rows: rows })) as ImportResult;
 }
 
 // ---------- programs & templates ----------

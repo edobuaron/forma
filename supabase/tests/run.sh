@@ -13,3 +13,13 @@ $P -d forma_test -f supabase/tests/03_edit_and_records_test.sql
 
 $P -d forma_test -f supabase/tests/04_finish_test.sql
 $P -d forma_test -f supabase/tests/05_shortfall_test.sql
+$P -d forma_test -f supabase/tests/06_onboarding_catalog_test.sql
+
+# Upgrade path: an account created before migration 009 must keep everything.
+$P -d postgres -c 'drop database if exists forma_upgrade_test' -c 'create database forma_upgrade_test'
+$P -d forma_upgrade_test -f supabase/tests/00_stub_supabase.sql
+for f in supabase/migrations/*.sql; do
+  [[ "$(basename "$f")" == 20261027000009_* ]] && $P -d forma_upgrade_test -f supabase/tests/07_pre_009_fixture.sql
+  $P -d forma_upgrade_test -f "$f"
+done
+$P -d forma_upgrade_test -f supabase/tests/07_upgrade_test.sql

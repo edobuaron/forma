@@ -17,7 +17,17 @@ import { completedWorkingSets, workingSets } from "@/lib/domain/sets";
 import { formatWeight } from "@/lib/domain/units";
 import { completedSetHistory, exerciseRecords, getActiveProgram, getExercise, getProfile, groupHistory } from "@/lib/data/queries";
 import { toExerciseConfig, toPrescription } from "@/lib/data/types";
+import { WEIGHT_ENTRY_SHORT } from "@/lib/catalog/conventions";
 import { requireUser } from "@/lib/supabase/server";
+
+const ENTRY_HINT: Record<string, string> = {
+  total: "Weight is logged as the total, bar included.",
+  per_dumbbell: "Weight is logged per dumbbell.",
+  per_side: "Weight is logged per side.",
+  stack: "Weight is the number on the stack.",
+  added: "Weight is the load added to your bodyweight; 0 means bodyweight only.",
+  assistance: "Weight is the assistance; less assistance means harder.",
+};
 
 export default async function ExercisePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -57,12 +67,18 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
           <div className="mt-3 flex flex-wrap gap-1.5">
             <Badge tone="outline">{ex.equipment}</Badge>
             <Badge tone="outline">{ex.category.replace("_", " ")}</Badge>
-            <Badge tone="outline">+{formatWeight(Number(ex.increment_kg), unit)} steps</Badge>
+            <Badge tone="outline">{WEIGHT_ENTRY_SHORT[ex.weight_convention] ?? ex.weight_convention}</Badge>
+            <Badge tone="outline">+{formatWeight(Number(ex.increment_kg), unit)} steps{ex.increment_is_generic ? " (generic)" : ""}</Badge>
             {ex.archived_at && <Badge tone="negative">Archived</Badge>}
           </div>
         </div>
         <ExerciseFormButton exercise={ex} variant="outline" size="sm"><Pencil /> Edit</ExerciseFormButton>
       </div>
+
+      <p className="-mt-3 mb-6 text-[13px] text-muted-foreground">
+        {ENTRY_HINT[ex.weight_convention]}
+        {ex.increment_is_generic && " The load step is a generic default; edit the exercise to set your equipment's real smallest jump."}
+      </p>
 
       {history.length === 0 ? (
         <EmptyState title="No sessions logged yet">Progress, records and recommendations appear once you log this exercise.</EmptyState>

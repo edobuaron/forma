@@ -27,8 +27,9 @@ Sessions reference templates with `on delete set null`; they never depend on the
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `profiles` | Per-user settings | unit, default rest, auto rest timer, rest sound, bodyweight, conservative progression |
-| `exercises` | User's exercise library | `category` (compound / isolation / bodyweight / weighted_bodyweight / skill), `load_type` (external / bodyweight / weighted_bodyweight / assisted), `progression` (double_progression / reps_first / bodyweight_reps / skill / none), `increment_kg`, optional `available_loads_kg[]`, `weight_convention` (total / per_dumbbell / per_side / stack / added), `e1rm_eligible`, `archived_at` |
+| `profiles` | Per-user settings | unit, default rest, auto rest timer, rest sound, bodyweight, conservative progression, `onboarded_at` / `setup_choice` (empty / starter / legacy) |
+| `exercises` | User's exercise library | `category` (compound / isolation / bodyweight / weighted_bodyweight / skill), `load_type` (external / bodyweight / weighted_bodyweight / assisted), `progression` (double_progression / reps_first / bodyweight_reps / skill / none), `increment_kg`, optional `available_loads_kg[]`, `weight_convention` (total / per_dumbbell / per_side / stack / added / assistance), `e1rm_eligible`, `archived_at`, `catalog_slug` + `catalog_version` (copied from the catalog; never updated by it), `aliases[]`, `source` (custom / catalog / import), `increment_is_generic` |
+| `exercise_catalog` | Built-in, read-only exercise list | generated from `src/lib/catalog/catalog.ts`; readable by every signed-in user, writable by nobody |
 | `programs` | Training programs | one `is_active` per user; `version` increments on each save |
 | `program_versions` | History of program changes | full JSON snapshot + note |
 | `workout_templates` | A planned workout (e.g. "Push") | `day_of_week` is legacy (always null after editing); workouts are not tied to weekdays |
@@ -46,7 +47,11 @@ Sessions reference templates with `on delete set null`; they never depend on the
 - `recent_exercise_history(exercise_ids, sessions, exclude_session)`: last N completed sessions per exercise. Powers previous-session comparison and recommendations. When a session is excluded, only sessions that started before it count, so a backdated workout compares against what came before it.
 - `start_workout_on(template_id, name, started_at)`: atomically creates a session, its exercises (with prescription snapshot) and empty sets. `started_at` defaults to now; a past date logs a workout for that day (future dates are rejected). `start_workout(template_id, name)` is kept as a wrapper that starts now.
 - `snapshot_program(program_id, note)`: bumps the program version and stores a snapshot.
-- `ensure_seeded()`: seeds the default program for an account that has none.
+- `ensure_seeded()`: creates the profile if missing. Never creates a program (since migration 009).
+- `complete_onboarding(choice, display_name, unit)`: first-run setup; `empty` or `starter`. Locks the profile row and does nothing once setup is recorded.
+- `add_catalog_exercises(slugs)`: copies catalog entries into the library; skips entries already linked or whose name/alias matches an existing exercise (archived included). Never touches programs.
+- `import_exercises(rows)`: inserts previewed CSV rows in one transaction; rows matching an existing name are skipped, never overwritten.
+- `exercise_name_key(name)`: duplicate-detection key (case, punctuation and simple plurals ignored), mirrored by `nameKey()` in `src/lib/catalog/names.ts`.
 
 ## Weighted bodyweight movements
 

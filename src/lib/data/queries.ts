@@ -37,6 +37,20 @@ export async function getProfile(db: DB): Promise<ProfileRow> {
   return check(await db.from("profiles").select("*").eq("id", u.user!.id).single()) as ProfileRow;
 }
 
+/**
+ * Whether first-run setup is done. Creates the profile if it is missing (ensure_seeded never creates a
+ * program), and marks accounts that already have programs as set up.
+ */
+export async function isOnboarded(db: DB, userId: string): Promise<boolean> {
+  const read = async () => check(await db.from("profiles").select("onboarded_at").eq("id", userId).maybeSingle()) as { onboarded_at: string | null } | null;
+  let row = await read();
+  if (!row || !row.onboarded_at) {
+    await db.rpc("ensure_seeded");
+    row = await read();
+  }
+  return !!row?.onboarded_at;
+}
+
 // ---------- exercises ----------
 export async function listExercises(db: DB, opts: { includeArchived?: boolean } = {}): Promise<ExerciseRow[]> {
   let q = db.from("exercises").select("*").order("name");

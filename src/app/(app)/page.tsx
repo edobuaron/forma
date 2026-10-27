@@ -54,7 +54,15 @@ export default async function Dashboard() {
           {d.templates.length > 0 ? (
             <TemplateGrid templates={d.templates} />
           ) : (
-            <p className="text-[13px] text-muted-foreground">Your program has no workouts yet. Add some under Programs, or quick start an empty one.</p>
+            <div className="space-y-3 text-[13.5px] text-muted-foreground">
+              <p>{d.program ? <>Your program <span className="font-medium text-foreground">{d.program.name}</span> has no workouts yet.</> : "You don't have an active program yet."} To start logging:</p>
+              <ol className="list-decimal space-y-1 pl-5">
+                <li><Link href="/exercises?view=catalog" className="font-medium text-accent">Add exercises</Link> from the catalog, or create your own.</li>
+                <li><Link href={d.program ? `/programs/${d.program.id}` : "/programs"} className="font-medium text-accent">Create a workout</Link> in your program and add those exercises.</li>
+                <li>Come back here and tap the workout to start. Enter the weight and reps you actually do; nothing is pre-filled.</li>
+              </ol>
+              <p>Or use Quick start to log an empty workout and add exercises as you go.</p>
+            </div>
           )}
         </div>
         <WeekStrip days={d.week} templates={d.templates} />

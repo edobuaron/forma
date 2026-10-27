@@ -12,13 +12,13 @@ Next.js 15 · React 19 · TypeScript · Tailwind CSS v4 · shadcn-style componen
 | Area | What works |
 |---|---|
 | Auth | Email + password, magic link, protected routes, sign-out |
-| Program | Your 4-day program (Push / Pull / Lower / Upper + Muscle-Up) and 22 exercises, seeded automatically on sign-up. No performance numbers are preloaded. |
+| Setup | On first sign-in, choose an empty program or the optional example 4-day template, plus an optional display name and kg/lb. Skippable; body measurements aren't required. No performance numbers are ever preloaded. |
 | Active workout | Pick any workout on any day (no fixed weekdays), or log one for a past day. Elapsed time, prescribed sets/reps/rest, suggested load, previous session per set, editable weight/reps/RIR, one-tap set completion, warm-up sets, add/remove sets, add/remove/replace/reorder exercises, exercise and workout notes, auto rest timer (+/−15 s, skip), autosave with resume, finish and discard |
 | Live comparison | Each completed set is compared with the same set last time: "+1 rep", "+2.5 kg", "Matched", "−2 reps", or "Heavier · new baseline" when load and reps move in opposite directions. The previous session opens from the exercise card. |
 | Progression | Deterministic, exercise-aware rules (double progression, reps-first for lateral raises and rear delts, bodyweight reps, no load progression for skill work). Suggestions explain themselves and can be dismissed. |
 | Summary | Duration, sets, volume, genuine PRs, comparison with last session, next-time suggestion per exercise |
 | History | Month calendar: tap any day to see what you logged or to log any workout on it, session list, full editing of past workouts (records are recomputed) |
-| Exercise library | Create, edit and archive exercises: muscles, equipment, category, load type, defaults, increment, exact available loads, weight convention, progression strategy, e1RM eligibility, technique notes |
+| Exercise library | A built-in catalog of 119 exercises to browse and copy into your library (programs never change). Create exercises from the library or from an empty search, including inside the workout picker. CSV import with a preview ([format](docs/EXERCISE_IMPORT.md)). Edit and archive: muscles, equipment, load type, explicit weight entry (total, per dumbbell, per side, stack, added weight, assistance), increment (generic defaults are labelled), exact available loads, progression strategy, e1RM eligibility, technique notes |
 | Exercise pages | Progress chart (e1RM, top set, reps at top load, volume, total reps; 4W to All), bests, best reps at each load, heaviest load for N reps, last vs previous session, PRs, history, recommendation |
 | Programs | Edit templates, sets/reps/rest/RIR, optional exercises, reorder, substitute, duplicate workouts and programs, version history with change notes |
 | Analytics | Exercise progress, weekly volume, workouts per week, weekly sets per muscle group, exercise frequency, pull-up / dip / muscle-up progression, monthly and yearly totals, bodyweight |
@@ -50,7 +50,7 @@ You need Node.js 20+ and a Supabase project (the free tier is fine).
    npm install
    npm run dev
    ```
-6. Open http://localhost:3000, choose **Create account**, and your program is ready.
+6. Open http://localhost:3000, choose **Create account**, and pick an empty program or the example template.
 
 Once your account exists, consider turning off public sign-ups (Authentication → Providers → Email → *Allow new users to sign up*). It's a personal app.
 
@@ -64,12 +64,12 @@ Once your account exists, consider turning off public sign-ups (Authentication �
 ## Tests
 
 ```bash
-npm test          # 38 unit tests: comparison, progression, loads, PRs, analytics, insights
+npm test          # unit tests: comparison, progression, loads, PRs, analytics, insights, catalog, CSV import
 npm run typecheck
 npm run test:db   # migrations + RLS + workout flow on a throwaway local Postgres
 ```
 
-`npm run test:db` needs `psql` and a local Postgres it can create databases on, e.g. `PGHOST=localhost PGUSER=postgres npm run test:db`. It installs a minimal stand-in for Supabase's `auth` schema, applies every migration, then checks: seeding, per-user isolation under RLS, ownership checks across tables, idempotent set upserts, validation constraints, one-workout-in-progress, history surviving template deletion, and program versioning.
+`npm run test:db` needs `psql` and a local Postgres it can create databases on, e.g. `PGHOST=localhost PGUSER=postgres npm run test:db`. It installs a minimal stand-in for Supabase's `auth` schema, applies every migration, then checks: setup choices and retries, the catalog and CSV import, per-user isolation under RLS, ownership checks across tables, idempotent set upserts, validation constraints, one-workout-in-progress, history surviving template deletion, and program versioning.
 
 ## How the important parts work
 
@@ -123,3 +123,15 @@ Before deploying this update:
 - Other-device sign-out revokes refresh sessions; existing access tokens remain usable until expiry.
 
 Reference: [Supabase password recovery](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail). JSON export is available; in-app backup restore is not yet implemented.
+
+## New accounts and the exercise catalog (migration 009)
+
+New accounts start with a short, skippable setup: an empty program or the optional, clearly labelled example 4-day template, an optional display name, and kg/lb. Sign-up and `ensure_seeded()` only create the profile, so nothing recreates the old default program. Setup is idempotent: retries and double taps create nothing more.
+
+The catalog source is `src/lib/catalog/catalog.ts` (versioned; `CATALOG_VERSION`). It was written for Forma rather than imported, so there's no third-party licence or attribution to carry, and it has no images or videos. Notes are neutral weight-entry and technique cues; increments are generic defaults and are labelled as such. `npm test` fails if the SQL in the migration drifts from the source; regenerate with `UPDATE_CATALOG_SQL=1 npx vitest run src/lib/catalog` and ship catalog changes in a new migration.
+
+Before deploying this update:
+
+- Apply `20261027000009_onboarding_and_catalog.sql` after 008, then deploy the app. The app's new setup screen and library call RPCs from this migration.
+- Existing accounts are marked as already set up; their programs, history, names and notes are unchanged. The 22 originally seeded exercises are linked to their catalog entries so the catalog shows them as "In library", and assisted exercises get the explicit `assistance` weight entry (only the label changes).
+- If you turned off public sign-ups, invite the friend from Supabase Auth (Users → Invite) or turn sign-ups on temporarily.

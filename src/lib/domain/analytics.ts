@@ -99,6 +99,7 @@ export const MUSCLE_LABELS: Record<string, string> = {
   glutes: "Glutes",
   quads: "Quads",
   hamstrings: "Hamstrings",
+  adductors: "Adductors",
   calves: "Calves",
 };
 

@@ -4,6 +4,9 @@ import type {
   SetKind, ShortfallReason, WeightUnit,
 } from "@/lib/domain/types";
 
+/** What the weight field means for an exercise. "assistance" added in migration 009. */
+export type WeightConvention = "total" | "per_side" | "per_dumbbell" | "stack" | "added" | "assistance";
+
 export interface ProfileRow {
   id: string;
   display_name: string | null;
@@ -13,6 +16,9 @@ export interface ProfileRow {
   rest_sound: boolean;
   bodyweight_kg: number | null;
   progression_conservative: boolean;
+  /** null until first-run setup is done. Added in migration 009. */
+  onboarded_at: string | null;
+  setup_choice: "empty" | "starter" | "legacy" | null;
   created_at: string;
 }
 
@@ -33,11 +39,18 @@ export interface ExerciseRow {
   increment_kg: number;
   min_load_kg: number;
   available_loads_kg: number[] | null;
-  weight_convention: "total" | "per_side" | "per_dumbbell" | "stack" | "added";
+  weight_convention: WeightConvention;
   progression: ProgressionStrategy;
   e1rm_eligible: boolean;
   notes: string | null;
   instructions: string | null;
+  /** Catalog entry this exercise was copied from (migration 009). Never updated by catalog changes. */
+  catalog_slug: string | null;
+  catalog_version: number | null;
+  aliases: string[];
+  source: "custom" | "catalog" | "import";
+  /** True while increment_kg is a generic default the user hasn't confirmed for their equipment. */
+  increment_is_generic: boolean;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
