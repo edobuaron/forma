@@ -11,8 +11,10 @@ import { Input, Textarea } from "@/components/ui/input";
 import { formatSetLong, loadColumnLabel } from "@/components/workout/format";
 import { ExercisePicker } from "@/components/workout/exercise-picker";
 import { NumberField } from "@/components/workout/number-field";
+import { ShortfallReasonField } from "@/components/workout/shortfall-reason";
 import { prLabel, type PRType } from "@/lib/domain/prs";
-import type { WeightUnit } from "@/lib/domain/types";
+import { isShortOfPlan, shortfallLabel } from "@/lib/domain/shortfall";
+import type { ShortfallReason, WeightUnit } from "@/lib/domain/types";
 import { displayToKg, formatVolume, kgToDisplay } from "@/lib/domain/units";
 import { deleteSession, recomputeRecords, saveSessionEdit } from "@/lib/data/mutations";
 import type { SessionFull } from "@/lib/data/queries";
@@ -22,6 +24,8 @@ import { createClient } from "@/lib/supabase/client";
 import { formatMinutes, uuid } from "@/lib/utils";
 
 type Ex = EditExercise;
+
+const shortOfPlan = (items: Ex[]) => items.some((e) => isShortOfPlan(e.prescribed, e.sets.filter((s) => s.kind === "working").length));
 
 const RECORDS_FAILED = "personal records couldn't be refreshed. They'll update the next time you save a workout with these exercises.";
 
@@ -36,6 +40,7 @@ export function SessionEditor({ session, unit, library, records }: { session: Se
   const [start, setStart] = useState(saved.start);
   const [minutes, setMinutes] = useState(saved.minutes);
   const [items, setItems] = useState<Ex[]>(saved.items);
+  const [shortfallReason, setShortfallReason] = useState<ShortfallReason | null>(saved.shortfallReason);
   const [picker, setPicker] = useState(false);
   const editingRef = useRef(editing);
   editingRef.current = editing;
@@ -46,6 +51,7 @@ export function SessionEditor({ session, unit, library, records }: { session: Se
     setStart(d.start);
     setMinutes(d.minutes);
     setItems(d.items);
+    setShortfallReason(d.shortfallReason);
   }
 
   // Fresh server data (after router.refresh) becomes the saved state, without discarding edits in progress.
@@ -84,7 +90,7 @@ export function SessionEditor({ session, unit, library, records }: { session: Se
   }
 
   async function save() {
-    const draft: SessionDraft = { name, notes, start, minutes, items };
+    const draft: SessionDraft = { name, notes, start, minutes, items, shortfallReason: shortOfPlan(items) ? shortfallReason : null };
     const problem = validateDraft(draft);
     if (problem) return toast.error(problem);
 
@@ -171,6 +177,14 @@ export function SessionEditor({ session, unit, library, records }: { session: Se
           </div>
         )}
       </div>
+
+      {editing ? (
+        (shortOfPlan(items) || shortfallReason) && <div className="mb-4"><ShortfallReasonField value={shortfallReason} onChange={setShortfallReason} /></div>
+      ) : (
+        saved.shortfallReason && shortOfPlan(saved.items) && (
+          <p className="mb-4 text-[13.5px] text-muted-foreground">Planned sets left out: {shortfallLabel[saved.shortfallReason].toLowerCase()}.</p>
+        )
+      )}
 
       {records.length > 0 && !editing && (
         <Card className="mb-4 flex flex-wrap gap-x-6 gap-y-2 p-4">

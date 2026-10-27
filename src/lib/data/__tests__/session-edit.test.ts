@@ -47,4 +47,11 @@ describe("history editor draft", () => {
     expect(next).toMatchObject({ name: "Upper B", minutes: 40, start: d.start });
     expect(next.items[0].sets[0]).toMatchObject({ completed: true, completed_at: new Date(d.start).toISOString() });
   });
+
+  it("carries the shortened-workout reason so it can be corrected in History", () => {
+    const d = draftFromSession({ ...session([set({ assistance_kg: 0 })]), shortfall_reason: "time" } as SessionFull);
+    expect(d.shortfallReason).toBe("time");
+    expect(toSessionEdit({ ...d, shortfallReason: "equipment" }).session.shortfall_reason).toBe("equipment");
+    expect(toSessionEdit({ ...d, shortfallReason: null }).session.shortfall_reason).toBeNull();
+  });
 });

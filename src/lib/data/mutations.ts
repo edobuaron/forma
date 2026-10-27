@@ -1,5 +1,6 @@
 // Data access layer — writes. Used from client components (RLS enforces ownership).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ShortfallReason } from "@/lib/domain/types";
 import { detectPRs } from "@/lib/domain/prs";
 import { completedSetHistory, groupHistory } from "./queries";
 import type { SessionEdit } from "./session-edit";
@@ -25,8 +26,8 @@ export async function startWorkout(db: DB, templateId: string | null, opts: { na
   return ok(res) as string;
 }
 
-export async function finishWorkout(db: DB, sessionId: string, notes: string | null, endedAt = new Date()) {
-  ok(await db.rpc("finish_workout", { p_session_id: sessionId, p_notes: notes, p_ended_at: endedAt.toISOString() }));
+export async function finishWorkout(db: DB, sessionId: string, notes: string | null, endedAt = new Date(), shortfallReason: ShortfallReason | null = null) {
+  ok(await db.rpc("finish_workout", { p_session_id: sessionId, p_notes: notes, p_ended_at: endedAt.toISOString(), p_shortfall_reason: shortfallReason }));
 }
 
 export async function discardWorkout(db: DB, sessionId: string) {

@@ -15,7 +15,8 @@ export type RecommendationAction =
   | "hold_build_reps" //  keep load, improve reps
   | "hold_confirm" //     top of range reached once; confirm before adding load
   | "hold_effort" //      top of range, but at failure — repeat first
-  | "hold_incomplete" //  last session incomplete
+  | "hold_shortened" //   planned sets omitted for time or equipment
+  | "hold_incomplete" //  fewer sets than planned (fatigue, other or no reason)
   | "hold_below" //       last session below recent performance
   | "consider_reduce" //  repeatedly below the rep range
   | "add_reps_or_load" // bodyweight movement at top of range
@@ -59,6 +60,14 @@ function toDisplayLoad(effective: number, ex: ExerciseConfig): number {
   return ex.loadType === "assisted" ? -effective : effective;
 }
 
+const SHORTFALL_NOTE: Record<NonNullable<ExercisePerformance["shortfallReason"]> | "none", string> = {
+  time: "The workout ended early (out of time). Omitted sets are not counted as failed.",
+  equipment: "Equipment was unavailable. Omitted sets are not counted as failed.",
+  fatigue: "You recorded that you couldn't finish the remaining sets.",
+  other: "You recorded another reason for the omitted sets. No change in performance is inferred.",
+  none: "No reason was recorded for the omitted sets. No change in performance is inferred.",
+};
+
 export function recommend(
   ex: ExerciseConfig,
   prescription: Prescription,
@@ -100,15 +109,22 @@ export function recommend(
     return { action: "skill", targetLoadKg: displayLoad, targetReps: null, reasons, evidenceSessionId: evidence };
   }
 
-  // Incomplete last session → repeat.
+  // Fewer sets than planned last time → keep the load. Omitted sets are not failed sets: the completed
+  // ones are real data, but too few to justify an increase, and they say nothing about a decline.
   const completedCount = workingSets(last.sets, ex).length;
   const lastRequired = last.prescription?.sets ?? required;
   if (completedCount < Math.min(required, lastRequired)) {
+    const reason = last.shortfallReason ?? null;
+    const external = reason === "time" || reason === "equipment";
     return {
-      action: "hold_incomplete",
+      action: external ? "hold_shortened" : "hold_incomplete",
       targetLoadKg: displayLoad,
       targetReps: lastReps.length ? lastReps : null,
-      reasons: [`Last session logged ${completedCount} of ${lastRequired} working sets. Repeat the load and complete all sets.`],
+      reasons: [
+        `Last session logged ${completedCount} of ${lastRequired} working sets.`,
+        SHORTFALL_NOTE[reason ?? "none"],
+        "Keep this load and resume the planned sets; there isn't enough evidence to increase it.",
+      ],
       evidenceSessionId: evidence,
     };
   }
@@ -279,8 +295,10 @@ export function headline(rec: Recommendation, ex: ExerciseConfig, unit: WeightUn
       return `Keep ${loadLabel(w!)}. Confirm ${reps} before adding load.`;
     case "hold_effort":
       return `Keep ${loadLabel(w!)}. Repeat ${reps} with a rep in reserve.`;
+    case "hold_shortened":
+      return `Workout ended early. Keep ${loadLabel(w!)} and resume planned sets.`;
     case "hold_incomplete":
-      return `Last session was incomplete. Repeat ${loadLabel(w!)}.`;
+      return `Fewer sets than planned last time. Keep ${loadLabel(w!)} and resume planned sets.`;
     case "hold_below":
       return `Last session was below your normal performance. Maintain ${loadLabel(w!)}.`;
     case "consider_reduce":

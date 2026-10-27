@@ -116,6 +116,7 @@ Settings includes password changes, revoking other device sessions, and a device
 Before deploying this update:
 
 - Apply migrations `20261026000006_atomic_edits_and_records.sql` and `20261026000007_finish_workout.sql` in order if they are pending. The updated app requires these RPCs.
+- Then apply `20261027000008_shortened_workouts.sql` (optional reason for omitted planned sets). Apply it before deploying the app: the new client calls the four-argument `finish_workout`. The migration only adds a nullable column, so existing workouts are unchanged.
 - In Supabase Auth URL Configuration, allow `https://<your-host>/auth/callback?next=/auth/update-password` and the equivalent localhost URL. Keep the existing sign-in callback allowed too.
 - The reset email template must use Supabase's `{{ .ConfirmationURL }}` link so the callback receives the code. Configure SMTP and test delivery on your deployment; local automated tests mock Auth and do not send messages.
 - Verify requesting recovery, opening the email, saving a new password, signing in with it, and retrying an expired link. If Secure Password Change requires reauthentication, the form supports an emailed confirmation code.

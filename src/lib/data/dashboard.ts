@@ -103,7 +103,7 @@ export async function loadDashboard(db: SupabaseClient) {
       };
     }).filter((r) => r.rec.action !== "first_time" && r.rec.action !== "skill" && !dismissed.has(`progression:${r.exercise.id}:${r.rec.evidenceSessionId ?? ""}`));
   }
-  const priority: Record<string, number> = { increase_load: 0, hold_below: 1, consider_reduce: 2, hold_effort: 3, hold_confirm: 4, add_reps_or_load: 5, hold_build_reps: 6, hold_incomplete: 7, skill: 9, first_time: 10 };
+  const priority: Record<string, number> = { increase_load: 0, hold_below: 1, consider_reduce: 2, hold_effort: 3, hold_confirm: 4, add_reps_or_load: 5, hold_build_reps: 6, hold_shortened: 7, hold_incomplete: 7, skill: 9, first_time: 10 };
   recs.sort((a, b) => priority[a.rec.action] - priority[b.rec.action]);
 
   // ----- insights -----

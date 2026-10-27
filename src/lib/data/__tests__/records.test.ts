@@ -8,7 +8,7 @@ const row = (session: string, day: number, weight: number): SetHistoryRow => ({
   id: `${session}-1`, session_id: session, session_exercise_id: `se-${session}`, exercise_id: "ex1",
   started_at: new Date(Date.UTC(2026, 9, day)).toISOString(), status: "completed", session_name: "W", bodyweight_kg: null,
   prescribed: {}, se_position: 0, position: 0, kind: "working", weight_kg: weight, assistance_kg: null, reps: 8, rir: null,
-  completed: true, completed_at: null,
+  completed: true, completed_at: null, shortfall_reason: null,
 });
 
 // Fake client: history reads return `history`, and replace_personal_records answers from `replies` in turn.

@@ -184,6 +184,7 @@ export function groupHistory(rows: SetHistoryRow[]): Map<string, ExercisePerform
       sets: [],
       prescription: r.prescribed && Object.keys(r.prescribed).length ? toPrescription(r.prescribed) : null,
       bodyweightKg: r.bodyweight_kg == null ? null : Number(r.bodyweight_kg),
+      shortfallReason: r.shortfall_reason ?? null,
     };
     p.sets.push(toLoggedSet(r));
     m.set(r.session_id, p);

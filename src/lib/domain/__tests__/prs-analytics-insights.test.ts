@@ -62,6 +62,12 @@ describe("insights", () => {
     expect(i[0].key).toBe("decline:pu");
     expect(i[0].detail).not.toMatch(/overtrain/i);
   });
+  it("sessions with planned sets omitted are not read as a decline", () => {
+    const rx3 = { sets: 3, repMin: 3, repMax: 8, restS: 120, targetRir: null };
+    const short = (d: number) => perf([set(10, 4), set(10, 3)], d, { prescription: rx3 });
+    const i = exerciseInsights(pu, [short(0), perf([set(10, 5), set(10, 4)], 7, { prescription: rx3 }), perf([set(10, 6), set(10, 5)], 14, { prescription: rx3 })]);
+    expect(i.find((x) => x.key.startsWith("decline"))).toBeUndefined();
+  });
   it("lateral-raise plateau → reps first", () => {
     const lat = ex({ id: "lat", name: "Cable Lateral Raise", progression: "reps_first", e1rmEligible: false, category: "isolation" });
     const p = (d: number) => perf([set(10, 15), set(10, 14)], d);

@@ -95,3 +95,54 @@ describe("exercise-specific behaviour", () => {
     expect(r.action).toBe("skill");
   });
 });
+
+describe("shortened workouts (planned sets omitted)", () => {
+  const e = ex();
+  const short = (o: Parameters<typeof perf>[2] = {}) => perf([set(60, 10), set(60, 10)], 0, { prescription: rx(), ...o });
+
+  it.each(["time", "equipment"] as const)("%s → workout ended early, keep load and resume planned sets", (reason) => {
+    const r = recommend(e, rx(), [short({ shortfallReason: reason })]);
+    expect(r.action).toBe("hold_shortened");
+    expect(r.targetLoadKg).toBe(60);
+    expect(headline(r, e, "kg")).toBe("Workout ended early. Keep 60 kg and resume planned sets.");
+    expect(r.reasons.join(" ")).toMatch(/not counted as failed/);
+  });
+
+  it("no reason → neutral wording, never assumes fatigue or an incomplete performance", () => {
+    const r = recommend(e, rx(), [short()]);
+    expect(r.action).toBe("hold_incomplete");
+    const text = [headline(r, e, "kg"), ...r.reasons].join(" ");
+    expect(text).toBe(
+      "Fewer sets than planned last time. Keep 60 kg and resume planned sets. Last session logged 2 of 3 working sets. " +
+      "No reason was recorded for the omitted sets. No change in performance is inferred. " +
+      "Keep this load and resume the planned sets; there isn't enough evidence to increase it.",
+    );
+    expect(text).not.toMatch(/incomplete|fatigue|fail/i);
+  });
+
+  it("fatigue and other still hold the load", () => {
+    for (const reason of ["fatigue", "other"] as const) {
+      const r = recommend(e, rx(), [short({ shortfallReason: reason })]);
+      expect(r.action).toBe("hold_incomplete");
+      expect(r.targetLoadKg).toBe(60);
+    }
+  });
+
+  it("completed sets at the top of the range never trigger an increase when sets were omitted", () => {
+    const r = recommend(e, rx(), [short({ shortfallReason: "time" }), perf(s3(60, 10, 10, 10), 7)]);
+    expect(r.action).toBe("hold_shortened");
+    expect(r.targetLoadKg).toBe(60);
+    expect(r.targetReps).toEqual([10, 10]); // only real, completed sets — no zero-rep placeholders
+  });
+
+  it("a fully completed exercise keeps normal progression, whatever the session reason", () => {
+    const r = recommend(e, rx(), [perf(s3(60, 10, 10, 10), 0, { prescription: rx(), shortfallReason: "time" })]);
+    expect(r.action).toBe("increase_load");
+    expect(r.targetLoadKg).toBe(62.5);
+  });
+
+  it("the next full session after a shortened one is not judged as below normal", () => {
+    const r = recommend(e, rx(), [perf(s3(60, 9, 8, 8), 0, { prescription: rx() }), short({ shortfallReason: "time" })]);
+    expect(r.action).toBe("hold_build_reps");
+  });
+});

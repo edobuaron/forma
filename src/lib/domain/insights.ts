@@ -41,9 +41,12 @@ export function exerciseInsights(ex: ExerciseConfig, history: ExercisePerformanc
   const recent = sessions.slice(0, MIN_SESSIONS_TREND);
   const load = dominantLoad(recent[0].sets, ex);
   if (load != null) {
+    // A session with planned sets omitted is not comparable: fewer reps there is missing work, not decline.
     const comparable = recent.every((h) => {
       const l = dominantLoad(h.sets, ex);
-      return l != null && sameLoad(l, load) && workingSets(h.sets, ex).length === workingSets(recent[0].sets, ex).length;
+      const n = workingSets(h.sets, ex).length;
+      return l != null && sameLoad(l, load) && n === workingSets(recent[0].sets, ex).length
+        && (h.prescription == null || n >= h.prescription.sets);
     });
     if (comparable) {
       const reps = recent.map((h) => repsAtLoad(h, ex, load)); // newest first

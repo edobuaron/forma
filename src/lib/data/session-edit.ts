@@ -1,5 +1,6 @@
 // Editing a past workout: the editable fields, their validation, and the payload for save_session_edit.
 import { format } from "date-fns";
+import type { ShortfallReason } from "@/lib/domain/types";
 import type { SessionFull } from "./queries";
 
 export type EditExercise = SessionFull["exercises"][number];
@@ -11,6 +12,7 @@ export interface SessionDraft {
   start: string; // yyyy-MM-ddTHH:mm in local time, as used by <input type="datetime-local">
   minutes: number;
   items: EditExercise[];
+  shortfallReason: ShortfallReason | null;
 }
 
 export function draftFromSession(s: SessionFull): SessionDraft {
@@ -20,6 +22,7 @@ export function draftFromSession(s: SessionFull): SessionDraft {
     start: format(new Date(s.started_at), "yyyy-MM-dd'T'HH:mm"),
     minutes: s.ended_at ? Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000) : 60,
     items: s.exercises,
+    shortfallReason: s.shortfall_reason ?? null,
   };
 }
 
@@ -37,7 +40,7 @@ export function validateDraft(d: SessionDraft): string | null {
 }
 
 export interface SessionEdit {
-  session: { name: string; notes: string | null; started_at: string; ended_at: string };
+  session: { name: string; notes: string | null; started_at: string; ended_at: string; shortfall_reason: ShortfallReason | null };
   exercises: {
     id: string; exercise_id: string; prescribed: EditExercise["prescribed"]; notes: string | null;
     sets: Pick<EditExercise["sets"][number], "id" | "kind" | "weight_kg" | "assistance_kg" | "reps" | "rir" | "completed_at" | "notes">[];
@@ -51,6 +54,7 @@ export function toSessionEdit(d: SessionDraft): SessionEdit {
     session: {
       name: d.name.trim(), notes: d.notes || null, started_at: startedAt.toISOString(),
       ended_at: new Date(startedAt.getTime() + d.minutes * 60000).toISOString(),
+      shortfall_reason: d.shortfallReason,
     },
     exercises: d.items.map((e) => ({
       id: e.id, exercise_id: e.exercise_id, prescribed: e.prescribed, notes: e.notes,

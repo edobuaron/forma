@@ -12,3 +12,4 @@ $P -d forma_test -f supabase/tests/02_workout_flow_test.sql
 $P -d forma_test -f supabase/tests/03_edit_and_records_test.sql
 
 $P -d forma_test -f supabase/tests/04_finish_test.sql
+$P -d forma_test -f supabase/tests/05_shortfall_test.sql

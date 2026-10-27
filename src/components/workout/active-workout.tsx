@@ -12,7 +12,8 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { reconcileCompletion, setProblem } from "@/lib/domain/set-validation";
 import { previousCounterpart } from "@/lib/domain/comparison";
 import { recommend, type Recommendation } from "@/lib/domain/progression";
-import type { ExercisePerformance } from "@/lib/domain/types";
+import { isShortOfPlan } from "@/lib/domain/shortfall";
+import type { ExercisePerformance, ShortfallReason } from "@/lib/domain/types";
 import { dismissRecommendation, discardWorkout, finishWorkout, recomputeRecords } from "@/lib/data/mutations";
 import type { SessionFull } from "@/lib/data/queries";
 import { recentHistory } from "@/lib/data/queries";
@@ -23,6 +24,7 @@ import { formatDuration, uuid } from "@/lib/utils";
 import { ExerciseCard } from "./exercise-card";
 import { ExercisePicker } from "./exercise-picker";
 import { RestTimer, type RestState } from "./rest-timer";
+import { ShortfallReasonField } from "./shortfall-reason";
 import type { WExercise, WSet } from "./types";
 
 interface Props {
@@ -96,6 +98,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
   const [items, setItems] = useState<WExercise[]>(() => toWorkout(initialSession));
   const [history, setHistory] = useState<Record<string, ExercisePerformance[]>>(initialHistory);
   const [notes, setNotes] = useState(initialSession.notes ?? "");
+  const [shortfallReason, setShortfallReason] = useState<ShortfallReason | null>(null);
   const [sync, setSync] = useState<{ status: SyncStatus; pending: number; local: LocalCopy }>({ status: "idle", pending: 0, local: "device" });
   const [rest, setRestState] = useState<RestState | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -345,6 +348,10 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
     for (const i of items) for (const s of i.sets) (s.completed ? done++ : open++);
     return { done, open };
   }, [items]);
+  const shortOfPlan = useMemo(
+    () => items.some((i) => isShortOfPlan(i.prescribed, i.sets.filter((s) => s.kind === "working" && s.completed).length)),
+    [items],
+  );
 
   async function finish() {
     for (const item of items) for (const set of item.sets) {
@@ -362,7 +369,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
           : "Couldn't reach the server, and this device couldn't store your sets. Keep this page open and try again when you're online.");
       }
       const mins = Number(minutes);
-      await finishWorkout(db, sessionId, notes || null, backdated ? new Date(startedAt.getTime() + (mins > 0 ? mins : estMinutes) * 60000) : new Date());
+      await finishWorkout(db, sessionId, notes || null, backdated ? new Date(startedAt.getTime() + (mins > 0 ? mins : estMinutes) * 60000) : new Date(), shortOfPlan ? shortfallReason : null);
       const exs = [...new Map(items.filter((i) => i.sets.some((s) => s.completed)).map((i) => [i.exercise_id, i.exercise])).values()];
       try {
         await recomputeRecords(db, exs);
@@ -513,6 +520,9 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
             <p className="mb-4 rounded-md bg-muted px-3 py-2.5 text-[13.5px] text-muted-foreground">
               {counts.open} set{counts.open === 1 ? "" : "s"} not marked complete will be left out of the record.
             </p>
+          )}
+          {shortOfPlan && counts.done > 0 && (
+            <div className="mb-4"><ShortfallReasonField value={shortfallReason} onChange={setShortfallReason} /></div>
           )}
           {counts.done === 0 && <p className="mb-4 text-[13.5px] text-muted-foreground">No completed sets yet. You can discard the workout instead.</p>}
           <div className="flex flex-col gap-2">

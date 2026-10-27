@@ -1,7 +1,7 @@
 // Row types mirroring the Postgres schema (supabase/migrations). Keep in sync with migrations.
 import type {
   Equipment, ExerciseCategory, ExerciseConfig, LoadType, LoggedSet, Prescription, ProgressionStrategy,
-  SetKind, WeightUnit,
+  SetKind, ShortfallReason, WeightUnit,
 } from "@/lib/domain/types";
 
 export interface ProfileRow {
@@ -88,6 +88,8 @@ export interface SessionRow {
   ended_at: string | null;
   notes: string | null;
   bodyweight_kg: number | null;
+  /** Why planned sets were omitted; null = not recorded. Added in migration 008. */
+  shortfall_reason: ShortfallReason | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -147,6 +149,7 @@ export interface SetHistoryRow {
   rir: number | null;
   completed: boolean;
   completed_at: string | null;
+  shortfall_reason: ShortfallReason | null;
 }
 
 export interface PersonalRecordRow {
