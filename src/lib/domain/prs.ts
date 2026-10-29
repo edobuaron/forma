@@ -1,6 +1,7 @@
 import { setE1rm } from "./e1rm";
 import { effectiveLoad, sameLoad, workingSets } from "./sets";
-import type { ExerciseConfig, LoggedSet } from "./types";
+import { SIDES, sideStream, togetherSets } from "./sides";
+import type { ExerciseConfig, LoggedSet, Side } from "./types";
 
 export type PRType = "heaviest_load" | "reps_at_load" | "best_e1rm" | "most_reps" | "first_skill" | "least_assistance";
 
@@ -93,6 +94,19 @@ export function detectPRs(ex: ExerciseConfig, current: LoggedSet[], history: Log
     }
   }
   return out;
+}
+
+export type SidedRecord = PersonalRecord & { side: Side | null };
+
+/**
+ * Records kept per stream: sets logged together are compared only with sets logged together, and
+ * each side only with the same side. A left-arm record never beats a right-arm one, or vice versa.
+ */
+export function detectRecords(ex: ExerciseConfig, current: LoggedSet[], history: LoggedSet[]): SidedRecord[] {
+  const together = detectPRs(ex, togetherSets(current), togetherSets(history)).map((r) => ({ ...r, side: null }));
+  const sides = SIDES.flatMap((side) =>
+    detectPRs(ex, sideStream(current, side), sideStream(history, side)).map((r) => ({ ...r, side })));
+  return [...together, ...sides];
 }
 
 export function prLabel(type: PRType): string {

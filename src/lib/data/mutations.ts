@@ -1,11 +1,11 @@
 // Data access layer — writes. Used from client components (RLS enforces ownership).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ShortfallReason } from "@/lib/domain/types";
-import { detectPRs } from "@/lib/domain/prs";
+import { detectRecords } from "@/lib/domain/prs";
 import { completedSetHistory, groupHistory } from "./queries";
 import type { ExerciseDraft } from "@/lib/catalog/import";
 import type { SessionEdit } from "./session-edit";
-import { toExerciseConfig, type ExerciseRow, type ProfileRow, type SetHistoryRow } from "./types";
+import { toExerciseConfig, type AttachmentRow, type ExerciseRow, type ProfileRow, type SetHistoryRow } from "./types";
 
 type DB = SupabaseClient;
 
@@ -66,10 +66,10 @@ function buildRecords(exercises: ExerciseRow[], rows: SetHistoryRow[]) {
     const sessions = [...(byEx.get(ex.id) ?? [])].reverse(); // oldest first
     const prior = [] as (typeof sessions)[number]["sets"];
     for (const s of sessions) {
-      for (const pr of detectPRs(ex, s.sets, prior)) {
+      for (const pr of detectRecords(ex, s.sets, prior)) {
         out.push({
           exercise_id: ex.id, session_id: s.sessionId, type: pr.type, value: pr.value,
-          load_kg: pr.loadKg, reps: pr.reps, previous: pr.previous, achieved_at: s.date,
+          load_kg: pr.loadKg, reps: pr.reps, previous: pr.previous, achieved_at: s.date, side: pr.side,
         });
       }
       prior.push(...s.sets);
@@ -82,6 +82,7 @@ const EDIT_ERRORS: Record<string, string> = {
   missing_reps: "every set needs reps (whole number ≥ 1).",
   missing_weight: "enter a weight for every set.",
   missing_assistance: "enter the assistance for every set (0 if none).",
+  missing_side: "a set tracked by side needs at least one side. Remove the set if neither side was done.",
 };
 
 /** Save an edited past workout. All-or-nothing: on any error the stored workout is unchanged. */
@@ -122,6 +123,31 @@ export async function updateExercise(db: DB, id: string, patch: Partial<Exercise
 
 export async function archiveExercise(db: DB, id: string, archived: boolean) {
   ok(await db.from("exercises").update({ archived_at: archived ? new Date().toISOString() : null }).eq("id", id));
+}
+
+// ---------- attachments (migration 011) ----------
+export async function createAttachment(db: DB, name: string): Promise<AttachmentRow> {
+  const res = await db.from("attachments").insert({ name: name.trim() }).select("id, name, starter_key, archived_at, created_at").single();
+  if (res.error?.code === "23505") throw new Error(`You already have an attachment called “${name.trim()}”.`);
+  return ok(res) as AttachmentRow;
+}
+
+/** Rename. Workouts keep the name they were logged with. */
+export async function renameAttachment(db: DB, id: string, name: string) {
+  const res = await db.from("attachments").update({ name: name.trim() }).eq("id", id);
+  if (res.error?.code === "23505") throw new Error(`You already have an attachment called “${name.trim()}”.`);
+  ok(res);
+}
+
+/** Deleted when no workout used it; archived (kept for history, hidden from pickers) when one did. */
+export async function removeAttachment(db: DB, id: string) {
+  return ok(await db.rpc("remove_attachment", { p_id: id })) as "deleted" | "archived";
+}
+
+export async function restoreAttachment(db: DB, id: string) {
+  const res = await db.from("attachments").update({ archived_at: null }).eq("id", id);
+  if (res.error?.code === "23505") throw new Error("An active attachment already has this name. Rename one of them first.");
+  ok(res);
 }
 
 // ---------- setup & catalog (migration 009) ----------

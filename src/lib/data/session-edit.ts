@@ -1,7 +1,20 @@
 // Editing a past workout: the editable fields, their validation, and the payload for save_session_edit.
 import { format } from "date-fns";
 import type { ShortfallReason } from "@/lib/domain/types";
+import { sideValues, type SideColumns } from "@/lib/domain/set-validation";
 import type { SessionFull } from "./queries";
+import { normalizeSet } from "./set-rows";
+
+/** As the server stores a sided set: a side not done keeps no values. */
+function clearUndoneSides<T extends SideColumns>(s: T): T {
+  if (!s.sided) return s;
+  const out = { ...s };
+  for (const k of ["left", "right"] as const) {
+    if (out[`${k}_completed`]) continue;
+    out[`${k}_weight_kg`] = null; out[`${k}_assistance_kg`] = null; out[`${k}_reps`] = null; out[`${k}_rir`] = null; out[`${k}_completed_at`] = null;
+  }
+  return out;
+}
 
 export type EditExercise = SessionFull["exercises"][number];
 
@@ -21,7 +34,7 @@ export function draftFromSession(s: SessionFull): SessionDraft {
     notes: s.notes ?? "",
     start: format(new Date(s.started_at), "yyyy-MM-dd'T'HH:mm"),
     minutes: s.ended_at ? Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000) : 60,
-    items: s.exercises,
+    items: s.exercises.map((e) => ({ ...e, track_sides: !!e.track_sides, sets: e.sets.map(normalizeSet) })),
     shortfallReason: s.shortfall_reason ?? null,
   };
 }
@@ -29,9 +42,15 @@ export function draftFromSession(s: SessionFull): SessionDraft {
 /** The first problem that stops the draft from saving, or null. The server repeats the set checks. */
 export function validateDraft(d: SessionDraft): string | null {
   for (const e of d.items) for (const s of e.sets) {
-    if (s.reps == null || s.reps < 1 || !Number.isInteger(s.reps)) return `${e.exercise.name}: every set needs reps (whole number ≥ 1).`;
-    if (e.exercise.load_type === "external" && s.weight_kg == null) return `${e.exercise.name}: enter a weight for every set.`;
-    if (e.exercise.load_type === "assisted" && s.assistance_kg == null) return `${e.exercise.name}: enter the assistance for every set (0 if none).`;
+    const parts = s.sided
+      ? (["left", "right"] as const).filter((side) => s[`${side}_completed`]).map((side) => ({ label: `${side} side`, v: sideValues(s, side) }))
+      : [{ label: "set", v: s }];
+    if (s.sided && parts.length === 0) return `${e.exercise.name}: a set tracked by side needs at least one side done. Remove the set if neither was.`;
+    for (const { label, v } of parts) {
+      if (v.reps == null || v.reps < 1 || !Number.isInteger(v.reps)) return `${e.exercise.name}: every ${label} needs reps (whole number ≥ 1).`;
+      if (e.exercise.load_type === "external" && v.weight_kg == null) return `${e.exercise.name}: enter a weight for every ${label}.`;
+      if (e.exercise.load_type === "assisted" && v.assistance_kg == null) return `${e.exercise.name}: enter the assistance for every ${label} (0 if none).`;
+    }
   }
   if (!d.name.trim()) return "Name the workout.";
   if (Number.isNaN(new Date(d.start).getTime())) return "Invalid date.";
@@ -43,7 +62,8 @@ export interface SessionEdit {
   session: { name: string; notes: string | null; started_at: string; ended_at: string; shortfall_reason: ShortfallReason | null };
   exercises: {
     id: string; exercise_id: string; prescribed: EditExercise["prescribed"]; notes: string | null;
-    sets: Pick<EditExercise["sets"][number], "id" | "kind" | "weight_kg" | "assistance_kg" | "reps" | "rir" | "completed_at" | "notes">[];
+    track_sides: boolean; attachment_state: EditExercise["attachment_state"]; attachment_id: string | null;
+    sets: (Pick<EditExercise["sets"][number], "id" | "kind" | "weight_kg" | "assistance_kg" | "reps" | "rir" | "completed_at" | "notes"> & Partial<SideColumns>)[];
   }[];
 }
 
@@ -58,10 +78,17 @@ export function toSessionEdit(d: SessionDraft): SessionEdit {
     },
     exercises: d.items.map((e) => ({
       id: e.id, exercise_id: e.exercise_id, prescribed: e.prescribed, notes: e.notes,
-      sets: e.sets.map((s) => ({
-        id: s.id, kind: s.kind, weight_kg: s.weight_kg, assistance_kg: s.assistance_kg, reps: s.reps, rir: s.rir,
-        completed_at: s.completed_at, notes: s.notes,
-      })),
+      track_sides: e.track_sides, attachment_state: e.attachment_state, attachment_id: e.attachment_id,
+      sets: e.sets.map((s) => {
+        const base = { id: s.id, kind: s.kind, completed_at: s.completed_at, notes: s.notes };
+        if (!s.sided) return { ...base, weight_kg: s.weight_kg, assistance_kg: s.assistance_kg, reps: s.reps, rir: s.rir };
+        // A side not done is sent without values: the server stores it as not performed, never as zero.
+        const side = (k: "left" | "right") => (s[`${k}_completed`] ? {
+          [`${k}_completed`]: true, [`${k}_weight_kg`]: s[`${k}_weight_kg`], [`${k}_assistance_kg`]: s[`${k}_assistance_kg`],
+          [`${k}_reps`]: s[`${k}_reps`], [`${k}_rir`]: s[`${k}_rir`], [`${k}_completed_at`]: s[`${k}_completed_at`],
+        } : { [`${k}_completed`]: false });
+        return { ...base, weight_kg: null, assistance_kg: null, reps: null, rir: null, sided: true, ...side("left"), ...side("right") };
+      }),
     })),
   };
 }
@@ -74,7 +101,7 @@ export function savedDraft(d: SessionDraft): SessionDraft {
     name: d.name.trim(),
     items: d.items.map((e, i) => ({
       ...e, position: i,
-      sets: e.sets.map((s, j) => ({ ...s, position: j, completed: true, completed_at: s.completed_at ?? startedAt })),
+      sets: e.sets.map((s, j) => clearUndoneSides({ ...s, position: j, completed: true, completed_at: s.completed_at ?? startedAt })),
     })),
   };
 }

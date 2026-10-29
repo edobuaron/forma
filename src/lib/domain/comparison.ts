@@ -1,6 +1,7 @@
 import { epley } from "./e1rm";
-import { completedWorkingSets, effectiveLoad, hasLoggedLoad, isValidWorkingSet, sameLoad } from "./sets";
-import type { ExerciseConfig, LoggedSet } from "./types";
+import { completedWorkingSets, effectiveLoad, hasLoggedLoad, isValidWorkingSet, sameLoad, workingSets } from "./sets";
+import { historyForSide, historyTogether, sideStream, togetherSets } from "./sides";
+import type { ExerciseConfig, ExercisePerformance, LoggedSet, Side } from "./types";
 
 export type ComparisonStatus =
   | "improved" //  better by an unambiguous measure
@@ -92,4 +93,41 @@ export function summarisePrevious(previousSets: LoggedSet[], prescribedSets: num
     prescribedSets,
     incomplete: prescribedSets != null && n < prescribedSets,
   };
+}
+
+// ---------- streams: sets logged together vs. each side ----------
+
+export type Stream = "together" | Side;
+
+/** The latest earlier session that recorded this stream (history newest first, attachment-compatible). */
+export function previousFor(history: ExercisePerformance[], stream: Stream, ex: Pick<ExerciseConfig, "loadType">): ExercisePerformance | null {
+  const h = stream === "together" ? historyTogether(history) : historyForSide(history, stream);
+  return h.find((p) => workingSets(p.sets, ex).length > 0) ?? null;
+}
+
+export interface StreamComparison {
+  stream: Stream;
+  /** Position among this stream's completed working sets. */
+  index: number;
+  set: LoggedSet;
+  previous: LoggedSet | null;
+  comparison: SetComparison;
+}
+
+/**
+ * Compare a session's completed working sets with the previous session, stream by stream: sets logged
+ * together with sets logged together, each side with the same side. Never across streams.
+ */
+export function compareStreams(current: LoggedSet[], history: ExercisePerformance[], ex: Pick<ExerciseConfig, "loadType" | "e1rmEligible">): StreamComparison[] {
+  const out: StreamComparison[] = [];
+  for (const stream of ["together", "left", "right"] as Stream[]) {
+    const sets = completedWorkingSets(stream === "together" ? togetherSets(current) : sideStream(current, stream));
+    if (sets.length === 0) continue;
+    const prev = previousFor(history, stream, ex);
+    sets.forEach((set, index) => {
+      const previous = prev ? previousCounterpart(prev.sets, index, ex) : null;
+      out.push({ stream, index, set, previous, comparison: compareSet(set, previous, ex) });
+    });
+  }
+  return out;
 }

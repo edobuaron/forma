@@ -1,23 +1,29 @@
 "use client";
 import {
-  ArrowDown, ArrowUp, Check, ChevronDown, History, Info, MoreHorizontal, NotebookPen, Plus, Repeat, Trash2, X,
+  ArrowDown, ArrowUp, Check, ChevronDown, Copy, History, Info, Link2, MoreHorizontal, NotebookPen, Plus, Repeat, Trash2, X,
 } from "lucide-react";
 import { useId, useState } from "react";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
 import { Textarea } from "@/components/ui/input";
-import { compareSet, previousCounterpart, summarisePrevious } from "@/lib/domain/comparison";
+import { compareSet, previousCounterpart, previousFor, summarisePrevious } from "@/lib/domain/comparison";
 import { headline, type Recommendation } from "@/lib/domain/progression";
 import { workingSets } from "@/lib/domain/sets";
-import type { ExerciseConfig, ExercisePerformance, WeightUnit } from "@/lib/domain/types";
+import {
+  attachmentRelation, compatibleHistory, doneWorkingSets, performedSets, sessionMode, setDone, setPerformed, sideAsSet, sideLabel,
+  sideShort, sideTrackingSuitable, SIDES,
+} from "@/lib/domain/sides";
+import type { ExerciseConfig, ExercisePerformance, LoggedSet, Side, WeightUnit } from "@/lib/domain/types";
 import { displayToKg, kgToDisplay } from "@/lib/domain/units";
-import { toLoggedSet } from "@/lib/data/types";
+import { plannedSets } from "@/lib/data/set-rows";
+import { toAttachmentRef, toLoggedSet } from "@/lib/data/types";
 import { cn, formatDuration } from "@/lib/utils";
-import { comparisonText, formatSetShort, formatSetsCompact, loadColumnLabel } from "./format";
+import { AttachmentChip } from "./attachment-picker";
+import { comparisonText, formatPerformance, formatSetShort, loadColumnLabel } from "./format";
 import { MenuCheckboxItem } from "./menu-checkbox-item";
 import { NumberField } from "./number-field";
 import { PreviousSessionSheet } from "./previous-session-sheet";
 import { useShowRir } from "./rir-visibility";
-import type { WExercise, WSet } from "./types";
+import type { SidePatch, WExercise, WSet } from "./types";
 
 interface Props {
   item: WExercise;
@@ -28,8 +34,15 @@ interface Props {
   unit: WeightUnit;
   isFirst: boolean;
   isLast: boolean;
+  /** The next set to do in the whole workout. */
+  activeSetId: string | null;
   onSetChange: (setId: string, patch: Partial<WSet>) => void;
   onCompleteSet: (setId: string) => void;
+  onSideChange: (setId: string, side: Side, patch: SidePatch) => void;
+  onCompleteSide: (setId: string, side: Side) => void;
+  onCopyLeftToRight: (setId: string) => void;
+  onToggleSides: () => void;
+  onPickAttachment: () => void;
   onAddSet: (kind: "working" | "warmup") => void;
   onRemoveSet: (setId: string) => void;
   onToggleKind: (setId: string) => void;
@@ -47,6 +60,8 @@ const SET_GRID = {
   noRir: "grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_48px] @md:grid-cols-[44px_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.85fr)_48px]",
 };
 const focusRing = "outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const footerButton = cn("flex h-11 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] @md:px-3 font-medium text-muted-foreground hover:bg-muted", focusRing);
+const activeRow = "shadow-[inset_2px_0_0_var(--accent)] bg-accent-soft/60";
 const iconButton = cn("grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted", focusRing);
 
 export function ExerciseCard(p: Props) {
@@ -58,6 +73,7 @@ export function ExerciseCard(p: Props) {
   const [showTech, setShowTech] = useState(false);
   const [showRir, setShowRir] = useShowRir();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [removing, setRemoving] = useState(false);
   const uid = useId();
   const ids = { title: `${uid}-title`, body: `${uid}-body`, why: `${uid}-why`, tech: `${uid}-tech` };
   const setGrid = showRir ? SET_GRID.rir : SET_GRID.noRir;
@@ -72,17 +88,30 @@ export function ExerciseCard(p: Props) {
     });
   }
 
-  const prev = history.find((h) => workingSets(h.sets, ex).length > 0) ?? null;
+  // The latest session in any mode is shown for context; only compatible sessions are compared.
+  const attachment = toAttachmentRef(item);
+  const compatible = compatibleHistory(history, attachment);
+  const latest = history.find((h) => performedSets(h.sets, ex).length > 0) ?? null;
+  const prev = previousFor(compatible, "together", ex);
   const prevSets = prev?.sets ?? [];
+  const prevSide = { left: previousFor(compatible, "left", ex), right: previousFor(compatible, "right", ex) };
   const rx = item.prescribed;
-  const prevSummary = prev ? summarisePrevious(prevSets, prev.prescription?.sets ?? null) : null;
+  const latestDone = latest ? doneWorkingSets(latest.sets) : 0;
+  const prevSummary = latest ? summarisePrevious([], latest.prescription?.sets ?? null) : null;
+  const latestMode = latest ? sessionMode(latest.sets) : null;
+  const relation = latest ? attachmentRelation(latest.attachment, attachment) : "unknown";
+  const showAttachment = item.exercise.equipment === "cable" || !!attachment.state;
+  const canTrackSides = item.track_sides || sideTrackingSuitable(item.exercise) || item.sets.some((x) => x.sided);
   const assisted = ex.loadType === "assisted";
   const bodyLoad = ex.loadType === "bodyweight" || ex.loadType === "weighted_bodyweight";
   const rec = p.recommendation;
 
-  const done = item.sets.filter((s) => s.completed && s.kind === "working").length;
-  const total = item.sets.filter((s) => s.kind === "working").length;
+  const logged = item.sets.map(toLoggedSet);
+  const done = doneWorkingSets(logged);
+  const total = plannedSets(rx, item.sets);
+  const complete = total > 0 && done >= total;
   let workingIdx = -1;
+  let sidedIdx = -1;
 
   return (
     <section aria-labelledby={ids.title} className="@container rounded-xl border bg-card shadow-card">
@@ -96,14 +125,17 @@ export function ExerciseCard(p: Props) {
         >
           <h2 id={ids.title} className="flex items-center gap-2 text-[17px] font-semibold leading-snug tracking-tight">
             <span className="line-clamp-2">{ex.name}</span>
-            {done === total && total > 0 && <Check className="size-4 shrink-0 text-positive" strokeWidth={2.5} />}
+            <span className={cn("ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium tabular", complete ? "bg-done/12 text-done" : "bg-subtle text-muted-foreground")}>
+              {complete && <Check aria-hidden className="size-3.5" strokeWidth={2.75} />}
+              {done}/{total}<span className="sr-only"> planned sets done{complete ? ", complete" : ""}</span>
+            </span>
           </h2>
           <p className="mt-0.5 text-[13px] text-muted-foreground tabular">
             {rx.sets ?? total} × {rx.rep_min}–{rx.rep_max}
             {rx.rest_s ? ` · ${formatDuration(rx.rest_s * 1000)} rest` : ""}
             {rx.target_rir != null ? ` · RIR ${rx.target_rir}` : ""}
             {rx.optional ? " · optional" : ""}
-            {collapsed && ` · ${done}/${total} done`}
+            {item.track_sides && " · L/R"}
           </p>
         </button>
         <button aria-label={`Previous sessions: ${ex.name}`} aria-haspopup="dialog" onClick={() => setShowPrev(true)} className={cn("-mt-1", iconButton)}>
@@ -120,6 +152,12 @@ export function ExerciseCard(p: Props) {
             <MenuCheckboxItem checked={showRir} onCheckedChange={(v) => setShowRir(v === true)}>
               Show RIR inputs
             </MenuCheckboxItem>
+            {canTrackSides && (
+              <MenuCheckboxItem checked={item.track_sides} onCheckedChange={() => p.onToggleSides()}>
+                Track sides separately
+              </MenuCheckboxItem>
+            )}
+            <MenuItem onSelect={p.onPickAttachment}><Link2 /> Attachment…</MenuItem>
             <MenuSeparator />
             <MenuItem onSelect={p.onReplace}><Repeat /> Replace exercise</MenuItem>
             <MenuItem disabled={p.isFirst} onSelect={() => p.onMove(-1)}><ArrowUp /> Move up</MenuItem>
@@ -134,11 +172,22 @@ export function ExerciseCard(p: Props) {
         <div id={ids.body}>
           {/* Previous performance + recommendation */}
           <div className="space-y-2 px-4 md:px-5">
-            {prev ? (
+            {showAttachment && (
+              <div className="-my-1.5 flex flex-wrap items-center gap-x-2">
+                <AttachmentChip value={attachment} onClick={p.onPickAttachment} />
+              </div>
+            )}
+            {latest ? (
               <button aria-haspopup="dialog" onClick={() => setShowPrev(true)} className={cn("-mx-1 block min-h-11 w-[calc(100%+0.5rem)] rounded-md px-1 py-1.5 text-left text-[13px] text-muted-foreground", focusRing)}>
                 <span className="font-medium text-foreground/80">Last time</span>{" "}
-                <span className="tabular">{formatSetsCompact(workingSets(prevSets, ex), ex.loadType, unit)}</span>
-                {prevSummary?.incomplete && <span> · {prevSummary.completedWorkingSets}/{prevSummary.prescribedSets} sets</span>}
+                <span className="tabular">{formatPerformance(latest.sets, ex.loadType, unit, workingSets(latest.sets, ex))}</span>
+                {prevSummary?.prescribedSets != null && latestDone < prevSummary.prescribedSets && <span> · {latestDone}/{prevSummary.prescribedSets} sets</span>}
+                {latest.attachment?.state && <span> · {latest.attachment.state === "none" ? "no attachment" : latest.attachment.name}</span>}
+                {relation === "different" && <span className="text-foreground/80"> · different attachment, not compared</span>}
+                {relation === "unknown" && !!attachment.state && !latest.attachment?.state && <span> · attachment not recorded</span>}
+                {latestMode && latestMode !== "mixed" && (latestMode === "sides") !== item.track_sides && (
+                  <span className="text-foreground/80"> · {latestMode === "sides" ? "logged per side" : "logged together"}, not compared</span>
+                )}
                 {item.substituted_for && <span> · substituted</span>}
               </button>
             ) : (
@@ -188,7 +237,73 @@ export function ExerciseCard(p: Props) {
             {item.sets.map((s) => {
               const isWarm = s.kind === "warmup";
               if (!isWarm) workingIdx++;
+              if (!isWarm && s.sided) sidedIdx++;
               const idx = workingIdx;
+              const setName = isWarm ? "Warm-up set" : `Set ${idx + 1}`;
+              const active = s.id === p.activeSetId;
+              const setMenu = (className?: string) => (
+                <Menu>
+                  <MenuTrigger
+                    aria-label={`${setName} options`}
+                    className={cn("h-11 rounded-sm text-center text-[14px] font-semibold tabular hover:bg-muted", focusRing, isWarm ? "text-pending" : "text-muted-foreground", className)}
+                  >
+                    {isWarm ? "W" : idx + 1}
+                  </MenuTrigger>
+                  <MenuContent align="start">
+                    <MenuItem onSelect={() => p.onToggleKind(s.id)}>{isWarm ? "Mark as working set" : "Mark as warm-up"}</MenuItem>
+                    <MenuItem destructive onSelect={() => p.onRemoveSet(s.id)}><Trash2 /> Remove set</MenuItem>
+                  </MenuContent>
+                </Menu>
+              );
+              const removeButton = (
+                <button
+                  aria-label={`Remove ${setName.toLowerCase()}`}
+                  onClick={() => p.onRemoveSet(s.id)}
+                  className={cn("grid h-11 w-12 place-items-center rounded-md border border-dashed text-negative hover:bg-negative/10", focusRing)}
+                >
+                  <Trash2 className="size-[18px]" />
+                </button>
+              );
+
+              if (s.sided) {
+                const set = toLoggedSet(s);
+                const pi = sidedIdx;
+                const partial = setPerformed(set) && !setDone(set);
+                return (
+                  <div key={s.id} role="group" aria-label={`${setName}, left and right`} aria-current={active ? "step" : undefined}
+                    className={cn("mt-0.5 rounded-md pb-0.5 transition-colors", active && activeRow)}>
+                    <div className="flex items-center gap-1 px-1.5 @md:px-2">
+                      {setMenu("w-11 shrink-0")}
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
+                        Left / right
+                        {partial && <span className="text-pending"> · {SIDES.find((sd) => !set.sides![sd].completed) === "left" ? "left" : "right"} side to go</span>}
+                      </span>
+                      {removing ? removeButton : (
+                        <button
+                          onClick={() => p.onCopyLeftToRight(s.id)}
+                          aria-label={`${setName}: copy left values to right`}
+                          disabled={s.left_reps == null && s.left_weight_kg == null && s.left_assistance_kg == null}
+                          className={cn("flex h-11 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium text-muted-foreground hover:bg-muted disabled:opacity-40", focusRing)}
+                        >
+                          <Copy className="size-3.5" /> L → R
+                        </button>
+                      )}
+                    </div>
+                    {SIDES.map((side) => (
+                      <SideRow
+                        key={side} side={side} set={s} setName={setName} isWarm={isWarm} showRir={showRir} setGrid={setGrid}
+                        ex={ex} unit={unit} rx={rx}
+                        prev={isWarm || !prevSide[side] ? null : previousCounterpart(prevSide[side]!.sets, pi, ex)}
+                        rec={p.recommendation?.sides?.[side] ?? null} index={pi}
+                        reportFieldError={reportFieldError} fieldErrors={fieldErrors}
+                        onChange={(patch) => p.onSideChange(s.id, side, patch)}
+                        onComplete={() => p.onCompleteSide(s.id, side)}
+                      />
+                    ))}
+                  </div>
+                );
+              }
+
               const prevSet = isWarm ? null : previousCounterpart(prevSets, idx, ex);
               const targetReps = isWarm ? null : rec?.targetReps?.[idx] ?? prevSet?.reps ?? null;
               const suggestedLoad = isWarm ? null : rec?.targetLoadKg ?? (assisted ? prevSet?.assistanceKg : prevSet?.weightKg) ?? null;
@@ -197,7 +312,6 @@ export function ExerciseCard(p: Props) {
               const isSuggested = loadVal == null && showLoad != null;
               const cmp = s.completed && !isWarm ? compareSet(toLoggedSet(s), prevSet, ex) : null;
               const cmpText = cmp ? comparisonText(cmp, unit, ex.loadType) : null;
-              const setName = isWarm ? "Warm-up set" : `Set ${idx + 1}`;
               const loadName = ex.loadType === "assisted" ? "assistance" : "load";
               const rowErrors = [
                 fieldErrors[`${s.id}:load`] && `Load: ${fieldErrors[`${s.id}:load`]}`,
@@ -208,40 +322,16 @@ export function ExerciseCard(p: Props) {
               return (
                 <div
                   key={s.id}
+                  aria-current={active ? "step" : undefined}
                   className={cn(
                     "grid items-center gap-x-1.5 gap-y-0.5 rounded-md px-1.5 py-1 transition-colors @md:gap-y-1.5 @md:px-2",
                     setGrid,
-                    s.completed && "bg-positive/[0.06]",
+                    s.completed && "bg-done/[0.07]",
+                    active && activeRow,
                   )}
                 >
-                  <Menu>
-                    <MenuTrigger
-                      aria-label={`${setName} options`}
-                      className={cn("h-11 rounded-sm text-center text-[14px] font-semibold tabular hover:bg-muted", focusRing, isWarm ? "text-negative" : "text-muted-foreground")}
-                    >
-                      {isWarm ? "W" : idx + 1}
-                    </MenuTrigger>
-                    <MenuContent align="start">
-                      <MenuItem onSelect={() => p.onToggleKind(s.id)}>{isWarm ? "Mark as working set" : "Mark as warm-up"}</MenuItem>
-                      <MenuItem destructive onSelect={() => p.onRemoveSet(s.id)}><Trash2 /> Delete set</MenuItem>
-                    </MenuContent>
-                  </Menu>
-                  <div
-                    className={cn(
-                      "col-[2/-1] row-start-2 flex min-w-0 flex-wrap items-baseline gap-x-2 pb-0.5 leading-tight @md:col-[2/3] @md:row-start-1 @md:block @md:pb-0",
-                      !prevSet && !cmpText && "hidden @md:block",
-                    )}
-                  >
-                    <p className="truncate text-[13px] text-muted-foreground tabular">
-                      <span className="@md:hidden">Previous </span>
-                      {prevSet ? formatSetShort(prevSet, ex.loadType, unit) : "—"}
-                    </p>
-                    {cmpText && (
-                      <p className={cn("text-[11px] font-medium leading-tight @md:line-clamp-2", cmpText.tone === "positive" && "text-positive", cmpText.tone === "negative" && "text-negative", cmpText.tone === "neutral" && "text-muted-foreground")}>
-                        {cmpText.text}
-                      </p>
-                    )}
-                  </div>
+                  {setMenu()}
+                  <PreviousCell prevText={prevSet ? formatSetShort(prevSet, ex.loadType, unit) : null} cmpText={cmpText} />
                   <NumberField
                     ariaLabel={`${setName} ${loadName}`}
                     onErrorChange={(m) => reportFieldError(`${s.id}:load`, m)}
@@ -271,18 +361,9 @@ export function ExerciseCard(p: Props) {
                       onCommit={(v) => p.onSetChange(s.id, { rir: v })}
                     />
                   )}
-                  <button
-                    aria-label={s.completed ? `Mark ${setName.toLowerCase()} not done` : `Complete ${setName.toLowerCase()}`}
-                    aria-pressed={s.completed}
-                    onClick={() => p.onCompleteSet(s.id)}
-                    className={cn(
-                      "grid h-11 w-12 place-items-center rounded-md transition-all active:scale-95",
-                      focusRing,
-                      s.completed ? "bg-positive text-white dark:text-black" : "bg-subtle text-muted-foreground hover:bg-subtle/70",
-                    )}
-                  >
-                    <Check className="size-5" strokeWidth={2.6} />
-                  </button>
+                  {removing ? removeButton : (
+                    <CompleteButton done={s.completed} label={setName} onClick={() => p.onCompleteSet(s.id)} />
+                  )}
                   {rowErrors.length > 0 && (
                     <p aria-hidden className="col-span-full px-1 pb-0.5 text-[12px] leading-snug text-negative">{rowErrors.join(" ")}</p>
                   )}
@@ -292,11 +373,16 @@ export function ExerciseCard(p: Props) {
           </div>
 
           <div className="flex items-center gap-1 px-3 pb-3 pt-1 md:px-4">
-            <button onClick={() => p.onAddSet("working")} className={cn("flex h-11 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] @md:px-3 font-medium text-muted-foreground hover:bg-muted", focusRing)}>
+            <button onClick={() => p.onAddSet("working")} className={footerButton}>
               <Plus className="size-4" /> Add set
             </button>
-            {!showNotes && (
-              <button onClick={() => setShowNotes(true)} className={cn("flex h-11 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] @md:px-3 font-medium text-muted-foreground hover:bg-muted", focusRing)}>
+            {item.sets.length > 0 && (
+              <button onClick={() => setRemoving((r) => !r)} aria-pressed={removing} className={cn(footerButton, removing && "bg-muted text-foreground")}>
+                {removing ? <><Check className="size-4" /> Done</> : <><Trash2 className="size-4" /> Remove</>}
+              </button>
+            )}
+            {!showNotes && !removing && (
+              <button onClick={() => setShowNotes(true)} className={footerButton}>
                 <NotebookPen className="size-4" /> Note
               </button>
             )}
@@ -305,7 +391,7 @@ export function ExerciseCard(p: Props) {
                 aria-expanded={showTech}
                 aria-controls={showTech ? ids.tech : undefined}
                 onClick={() => setShowTech((v) => !v)}
-                className={cn("ml-auto flex h-11 items-center gap-1 whitespace-nowrap rounded-md px-2.5 text-[13px] @md:px-3 font-medium text-muted-foreground hover:bg-muted", focusRing)}
+                className={cn(footerButton, "ml-auto gap-1")}
               >
                 Technique <ChevronDown className={cn("size-3.5 transition-transform", showTech && "rotate-180")} />
               </button>
@@ -336,3 +422,105 @@ export function ExerciseCard(p: Props) {
   );
 }
 
+
+function CompleteButton({ done, label, onClick }: { done: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      aria-label={done ? `Mark ${label.toLowerCase()} not done` : `Complete ${label.toLowerCase()}`}
+      aria-pressed={done}
+      onClick={onClick}
+      className={cn(
+        "grid h-11 w-12 place-items-center rounded-md transition-[background-color,transform] active:scale-95 motion-reduce:active:scale-100",
+        focusRing,
+        done ? "bg-done text-white dark:text-black" : "bg-subtle text-muted-foreground hover:bg-subtle/70",
+      )}
+    >
+      <Check className="size-5" strokeWidth={2.6} />
+    </button>
+  );
+}
+
+/** Previous set and comparison: beside the inputs on wide cards, underneath on phones. */
+function PreviousCell({ prevText, cmpText, prefix = "Previous" }: { prevText: string | null; cmpText: ReturnType<typeof comparisonText>; prefix?: string }) {
+  return (
+    <div
+      className={cn(
+        "col-[2/-1] row-start-2 flex min-w-0 flex-wrap items-baseline gap-x-2 pb-0.5 leading-tight @md:col-[2/3] @md:row-start-1 @md:block @md:pb-0",
+        !prevText && !cmpText && "hidden @md:block",
+      )}
+    >
+      <p className="truncate text-[13px] text-muted-foreground tabular">
+        <span className="@md:hidden">{prefix} </span>
+        {prevText ?? "—"}
+      </p>
+      {cmpText && (
+        <p className={cn("text-[11px] font-medium leading-tight @md:line-clamp-2", cmpText.tone === "positive" && "text-positive", cmpText.tone === "negative" && "text-negative", cmpText.tone === "neutral" && "text-muted-foreground")}>
+          {cmpText.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** One side of a left/right set: its own load, reps, RIR and completion, compared with the same side last time. */
+function SideRow({ side, set: s, setName, isWarm, showRir, setGrid, ex, unit, rx, prev, rec, index, reportFieldError, fieldErrors, onChange, onComplete }: {
+  side: Side; set: WSet; setName: string; isWarm: boolean; showRir: boolean; setGrid: string;
+  ex: ExerciseConfig; unit: WeightUnit; rx: WExercise["prescribed"]; prev: LoggedSet | null; rec: Recommendation | null; index: number;
+  reportFieldError: (key: string, m: string | null) => void; fieldErrors: Record<string, string>;
+  onChange: (patch: SidePatch) => void; onComplete: () => void;
+}) {
+  const assisted = ex.loadType === "assisted";
+  const bodyLoad = ex.loadType === "bodyweight" || ex.loadType === "weighted_bodyweight";
+  const v = sideAsSet(toLoggedSet(s), side);
+  const done = v.completed;
+  const loadVal = assisted ? v.assistanceKg : v.weightKg;
+  const suggested = isWarm ? null : rec?.targetLoadKg ?? (assisted ? prev?.assistanceKg : prev?.weightKg) ?? null;
+  const showLoad = loadVal ?? (done ? null : suggested);
+  const targetReps = isWarm ? null : rec?.targetReps?.[index] ?? prev?.reps ?? null;
+  const cmp = done && !isWarm ? comparisonText(compareSet(v, prev, ex), unit, ex.loadType) : null;
+  const name = `${setName} ${sideLabel[side].toLowerCase()}`;
+  const key = `${s.id}:${side}`;
+  const errors = ["load", "reps", "rir"].map((f) => fieldErrors[`${key}:${f}`] && `${f === "rir" ? "RIR" : f[0].toUpperCase() + f.slice(1)}: ${fieldErrors[`${key}:${f}`]}`).filter(Boolean);
+  return (
+    <div className={cn("grid items-center gap-x-1.5 gap-y-0.5 rounded-md px-1.5 py-0.5 transition-colors @md:gap-y-1.5 @md:px-2", setGrid, done && "bg-done/[0.07]")}>
+      <span className={cn(
+        "mx-auto grid h-7 w-8 place-items-center rounded-full text-[12px] font-semibold",
+        side === "left" ? "bg-subtle text-foreground/80" : "border text-foreground/80",
+      )}>
+        <span aria-hidden>{sideShort[side]}</span><span className="sr-only">{sideLabel[side]}</span>
+      </span>
+      <PreviousCell prefix={`${sideLabel[side]} last time`} prevText={prev ? formatSetShort(prev, ex.loadType, unit) : null} cmpText={cmp} />
+      <NumberField
+        ariaLabel={`${name} ${assisted ? "assistance" : "load"}`}
+        onErrorChange={(m) => reportFieldError(`${key}:load`, m)}
+        value={showLoad != null ? kgToDisplay(showLoad, unit) : null}
+        suggested={loadVal == null && showLoad != null}
+        placeholder={bodyLoad ? "0" : "–"}
+        max={unit === "kg" ? 1000 : 2200}
+        onCommit={(x) => onChange(assisted ? { assistance_kg: x == null ? null : displayToKg(x, unit) } : { weight_kg: x == null ? null : displayToKg(x, unit) })}
+      />
+      <NumberField
+        ariaLabel={`${name} reps`}
+        onErrorChange={(m) => reportFieldError(`${key}:reps`, m)}
+        value={v.reps}
+        integer
+        placeholder={targetReps != null ? String(targetReps) : String(rx.rep_max ?? "")}
+        max={200}
+        onCommit={(x) => onChange({ reps: x })}
+      />
+      {showRir && (
+        <NumberField
+          ariaLabel={`${name} reps in reserve`}
+          onErrorChange={(m) => reportFieldError(`${key}:rir`, m)}
+          value={v.rir}
+          placeholder="–"
+          max={10}
+          className="text-[14px]"
+          onCommit={(x) => onChange({ rir: x })}
+        />
+      )}
+      <CompleteButton done={done} label={name} onClick={onComplete} />
+      {errors.length > 0 && <p aria-hidden className="col-span-full px-1 pb-0.5 text-[12px] leading-snug text-negative">{errors.join(" ")}</p>}
+    </div>
+  );
+}

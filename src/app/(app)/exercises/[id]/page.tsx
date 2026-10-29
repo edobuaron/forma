@@ -7,17 +7,19 @@ import { ExerciseProgressChart } from "@/components/exercises/progress-chart";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState, Stat } from "@/components/ui/misc";
-import { comparisonText, formatSetLong, formatSetsCompact } from "@/components/workout/format";
+import { formatPerformance } from "@/components/workout/format";
 import { bestLoadForReps, bestRepsByLoad, MUSCLE_LABELS, sessionPoints } from "@/lib/domain/analytics";
-import { compareSet, previousCounterpart } from "@/lib/domain/comparison";
+import { compareStreams } from "@/lib/domain/comparison";
+import { recordLabel, StreamComparisonList } from "@/components/workout/stream-comparison";
 import { exerciseInsights } from "@/lib/domain/insights";
-import { headline, recommend } from "@/lib/domain/progression";
+import { headline, recommendFor } from "@/lib/domain/progression";
 import { prLabel, type PRType } from "@/lib/domain/prs";
-import { completedWorkingSets, workingSets } from "@/lib/domain/sets";
+import { workingSets } from "@/lib/domain/sets";
 import { formatWeight } from "@/lib/domain/units";
 import { completedSetHistory, exerciseRecords, getActiveProgram, getExercise, getProfile, groupHistory } from "@/lib/data/queries";
-import { toExerciseConfig, toPrescription } from "@/lib/data/types";
+import { toExerciseConfig, toPrescription, defaultContext } from "@/lib/data/types";
 import { WEIGHT_ENTRY_SHORT } from "@/lib/catalog/conventions";
+import { attachmentLabel, compatibleHistory, performedSets } from "@/lib/domain/sides";
 import { requireUser } from "@/lib/supabase/server";
 
 const ENTRY_HINT: Record<string, string> = {
@@ -42,10 +44,10 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
   const history = groupHistory(rows).get(id) ?? []; // newest first
   const points = sessionPoints(cfg, history);
   const allSets = history.flatMap((h) => h.sets);
-  const ws = workingSets(allSets, cfg);
+  const ws = performedSets(allSets, cfg);
   const usedIn = (program?.templates ?? []).flatMap((t) => t.exercises.filter((e) => e.exercise_id === id).map((e) => ({ t, e })));
   const rx = usedIn[0] ? toPrescription({ sets: usedIn[0].e.sets, rep_min: usedIn[0].e.rep_min, rep_max: usedIn[0].e.rep_max, rest_s: usedIn[0].e.rest_s }) : toPrescription(null, ex);
-  const rec = recommend(cfg, rx, history, { conservative: profile.progression_conservative });
+  const rec = recommendFor(cfg, rx, history, defaultContext(ex), { conservative: profile.progression_conservative });
   const insights = exerciseInsights(cfg, history);
   const [last, prev] = history;
   const heaviest = ws.length ? ws.reduce((a, s) => ((s.weightKg ?? 0) > (a.weightKg ?? 0) ? s : a)) : null;
@@ -113,15 +115,8 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
             <Card>
               <CardHeader><CardTitle>Last session vs previous</CardTitle><span className="text-[12px] text-muted-foreground">{format(new Date(last.date), "d MMM")}</span></CardHeader>
               <CardContent className="space-y-1.5">
-                {completedWorkingSets(last.sets).map((s, i) => {
-                  const c = comparisonText(compareSet(s, prev ? previousCounterpart(prev.sets, i, cfg) : null, cfg), unit, cfg.loadType);
-                  return (
-                    <div key={i} className="flex items-center justify-between text-[14px]">
-                      <span className="tabular"><span className="mr-3 text-muted-foreground">{i + 1}</span>{formatSetLong(s, cfg.loadType, unit)}</span>
-                      {c && <span className={`text-[12.5px] ${c.tone === "positive" ? "text-positive" : c.tone === "negative" ? "text-negative" : "text-muted-foreground"}`}>{c.text}</span>}
-                    </div>
-                  );
-                })}
+                {last.attachment?.state && <p className="text-[12.5px] text-muted-foreground">Attachment: {attachmentLabel(last.attachment)}</p>}
+                <StreamComparisonList items={compareStreams(last.sets, compatibleHistory(history.slice(1), last.attachment), cfg)} loadType={cfg.loadType} unit={unit} />
                 {!prev && <p className="text-[12.5px] text-muted-foreground">No earlier session to compare.</p>}
               </CardContent>
             </Card>
@@ -155,7 +150,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
                 <ul className="divide-y">
                   {records.slice(0, 10).map((r) => (
                     <li key={r.id} className="flex items-center justify-between py-2 text-[14px]">
-                      <span>{prLabel(r.type as PRType)} <span className="text-muted-foreground">· {format(new Date(r.achieved_at), "d MMM yyyy")}</span></span>
+                      <span>{recordLabel(prLabel(r.type as PRType), r.side)} <span className="text-muted-foreground">· {format(new Date(r.achieved_at), "d MMM yyyy")}</span></span>
                       <span className="font-medium tabular">{r.type === "best_e1rm" ? `${formatWeight(Number(r.value), unit)} est.` : r.type === "most_reps" ? `${r.reps} reps` : r.type === "least_assistance" ? `${formatWeight(Number(r.value), unit)} assist` : `${formatWeight(Number(r.load_kg), unit)} × ${r.reps}`}</span>
                     </li>
                   ))}
@@ -172,7 +167,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
                   <li key={h.sessionId}>
                     <Link href={`/history/${h.sessionId}`} className="flex items-baseline justify-between gap-4 py-2.5 hover:opacity-80">
                       <span className="w-24 shrink-0 text-[13px] text-muted-foreground">{format(new Date(h.date), "d MMM yyyy")}</span>
-                      <span className="flex-1 text-right text-[14px] tabular">{formatSetsCompact(workingSets(h.sets, cfg), cfg.loadType, unit)}</span>
+                      <span className="flex-1 text-right text-[14px] tabular">{formatPerformance(h.sets, cfg.loadType, unit, workingSets(h.sets, cfg))}{h.attachment?.state ? <span className="text-muted-foreground"> · {attachmentLabel(h.attachment)}</span> : null}</span>
                     </Link>
                   </li>
                 ))}

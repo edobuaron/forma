@@ -1,7 +1,7 @@
 "use client";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ import {
 import { cleanText } from "@/lib/catalog/names";
 import { MUSCLE_LABELS } from "@/lib/domain/analytics";
 import { archiveExercise, createExercise, updateExercise, type ExerciseInput } from "@/lib/data/mutations";
-import type { ExerciseRow } from "@/lib/data/types";
+import { listAttachments } from "@/lib/data/queries";
+import type { AttachmentRow, ExerciseRow } from "@/lib/data/types";
+import { sideTrackingSuitable } from "@/lib/domain/sides";
+import { AttachmentChip, AttachmentPicker } from "@/components/workout/attachment-picker";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +36,7 @@ const DEFAULTS: ExerciseInput = {
   name: "", aliases: [], primary_muscles: [], secondary_muscles: [], equipment: "cable", category: "isolation", load_type: "external",
   default_sets: 3, default_rep_min: 8, default_rep_max: 12, default_rest_s: 90, increment_kg: GENERIC_INCREMENT_KG.stack, increment_is_generic: true,
   min_load_kg: 0, available_loads_kg: null, weight_convention: "stack", progression: "double_progression", e1rm_eligible: false, notes: null, instructions: null,
+  track_sides: false, default_attachment_state: null, default_attachment_id: null,
 };
 
 const CATEGORY_PRESETS: Record<ExerciseInput["category"], Partial<ExerciseInput>> = {
@@ -90,6 +94,17 @@ export function ExerciseForm({ open, onOpenChange, exercise, initialName, onCrea
   const [loadsText, setLoadsText] = useState(exercise?.available_loads_kg?.join(", ") ?? "");
   const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [attachments, setAttachments] = useState<AttachmentRow[] | null>(null);
+  const [pickAttachment, setPickAttachment] = useState(false);
+  const showAttachment = v.equipment === "cable" || !!v.default_attachment_state;
+  useEffect(() => {
+    if (!open || !advanced || !showAttachment || attachments) return;
+    listAttachments(createClient(), { includeArchived: true }).then(setAttachments, () => setAttachments([]));
+  }, [open, advanced, showAttachment, attachments]);
+  const defaultAttachment = {
+    state: v.default_attachment_state, id: v.default_attachment_id,
+    name: attachments?.find((a) => a.id === v.default_attachment_id)?.name ?? null,
+  };
   const set = <K extends keyof ExerciseInput>(k: K, val: ExerciseInput[K]) => setV((cur) => ({ ...cur, [k]: val }));
   const num = (s: string) => (s === "" ? NaN : Number(s.replace(",", ".")));
 
@@ -249,6 +264,22 @@ export function ExerciseForm({ open, onOpenChange, exercise, initialName, onCrea
                 </span>
                 <Switch checked={v.e1rm_eligible} disabled={!canE1rm && !v.e1rm_eligible} onCheckedChange={(c) => set("e1rm_eligible", c)} />
               </label>
+              {(sideTrackingSuitable(v) || v.track_sides) && (
+                <label className="flex items-center justify-between gap-4 rounded-md border px-3 py-3">
+                  <span>
+                    <span className="block text-[14px] font-medium">Track sides separately</span>
+                    <span className="block text-[12px] text-muted-foreground">
+                      New workouts log left and right with their own load and reps. You can switch per workout. Past workouts keep how they were logged.
+                    </span>
+                  </span>
+                  <Switch checked={v.track_sides} onCheckedChange={(c) => set("track_sides", c)} />
+                </label>
+              )}
+              {showAttachment && (
+                <Field label="Default attachment" hint="Copied into new workouts; you can change it during the workout.">
+                  <div><AttachmentChip value={defaultAttachment} onClick={() => setPickAttachment(true)} /></div>
+                </Field>
+              )}
               <Field label="Technique"><Textarea value={v.instructions ?? ""} maxLength={1000} onChange={(e) => set("instructions", e.target.value)} placeholder="Cues, setup, range of motion" /></Field>
               <Field label="Notes"><Textarea value={v.notes ?? ""} maxLength={1000} onChange={(e) => set("notes", e.target.value)} /></Field>
             </div>
@@ -259,6 +290,17 @@ export function ExerciseForm({ open, onOpenChange, exercise, initialName, onCrea
             <Button type="submit" variant="primary" disabled={busy}>{busy && <Loader2 className="animate-spin" />} {exercise ? "Save" : "Create exercise"}</Button>
           </div>
         </form>
+        {pickAttachment && (
+          <AttachmentPicker
+            open={pickAttachment}
+            onOpenChange={setPickAttachment}
+            title="Default attachment"
+            value={defaultAttachment}
+            attachments={attachments ?? []}
+            onListChange={setAttachments}
+            onChange={(ref) => setV((cur) => ({ ...cur, default_attachment_state: ref.state, default_attachment_id: ref.id }))}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

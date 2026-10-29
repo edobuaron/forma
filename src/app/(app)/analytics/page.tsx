@@ -8,7 +8,7 @@ import { EmptyState, PageHeader } from "@/components/ui/misc";
 import { MUSCLE_LABELS, sessionPoints, TIMEFRAMES, timeframeStart, weekStart, weeklySetsPerMuscle, type TimeframeKey } from "@/lib/domain/analytics";
 import { formatWeight, kgToDisplay } from "@/lib/domain/units";
 import { completedSetHistory, getProfile, groupHistory, listExercises, listMeasurements, listSessionDates } from "@/lib/data/queries";
-import { toExerciseConfig } from "@/lib/data/types";
+import { isWorkingRow, rowSetCredit, rowVolumeKg, toExerciseConfig } from "@/lib/data/types";
 import { requireUser } from "@/lib/supabase/server";
 
 export const metadata = { title: "Progress" };
@@ -25,7 +25,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const unit = profile.unit;
   const exById = new Map(exercises.map((e) => [e.id, e]));
   const grouped = groupHistory(rows);
-  const working = rows.filter((r) => r.kind === "working" && (r.reps ?? 0) > 0);
+  const working = rows.filter(isWorkingRow);
 
   if (sessionsAll.length === 0) {
     return (<><PageHeader title="Progress" /><EmptyState title="Nothing to analyse yet">Charts are built only from workouts you log — no placeholder data. Finish your first workout to see them.</EmptyState></>);
@@ -45,8 +45,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const vol = new Map<string, number>(), sets = new Map<string, number>();
   for (const r of working) {
     const w = weekStart(new Date(r.started_at));
-    vol.set(w, (vol.get(w) ?? 0) + Math.max(0, Number(r.weight_kg ?? 0)) * (r.reps ?? 0));
-    sets.set(w, (sets.get(w) ?? 0) + 1);
+    vol.set(w, (vol.get(w) ?? 0) + rowVolumeKg(r));
+    sets.set(w, (sets.get(w) ?? 0) + rowSetCredit(r));
   }
   const sessionsInTf = sessionsAll.filter((s) => !start || new Date(s.started_at) >= start);
   const perWeek = new Map<string, number>();
@@ -54,7 +54,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const wkLabel = (w: string) => format(new Date(w), "d MMM");
 
   // Muscle sets — weekly average over complete weeks in range
-  const muscleWeeks = weeklySetsPerMuscle(working.map((r) => ({ date: r.started_at, primary: exById.get(r.exercise_id)?.primary_muscles ?? [], secondary: exById.get(r.exercise_id)?.secondary_muscles ?? [] })));
+  const muscleWeeks = weeklySetsPerMuscle(working.map((r) => ({ date: r.started_at, primary: exById.get(r.exercise_id)?.primary_muscles ?? [], secondary: exById.get(r.exercise_id)?.secondary_muscles ?? [], credit: rowSetCredit(r) })));
   const nWeeks = Math.max(1, weeks.length);
   const muscleTotals = new Map<string, number>();
   for (const m of muscleWeeks.values()) for (const [k, v] of m) muscleTotals.set(k, (muscleTotals.get(k) ?? 0) + v);

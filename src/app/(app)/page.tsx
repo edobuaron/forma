@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/misc";
 import { headline } from "@/lib/domain/progression";
 import { prLabel, type PRType } from "@/lib/domain/prs";
+import { recordLabel } from "@/components/workout/stream-comparison";
 import { formatWeight, kgToDisplay } from "@/lib/domain/units";
 import { loadDashboard } from "@/lib/data/dashboard";
 import { requireUser } from "@/lib/supabase/server";
@@ -146,7 +147,7 @@ export default async function Dashboard() {
                   <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                     <div className="min-w-0">
                       <p className="truncate text-[14px] font-medium">{r.exercise.name}</p>
-                      <p className="text-[12px] text-muted-foreground">{prLabel(r.type as PRType)} · {formatDistanceToNowStrict(new Date(r.achieved_at), { addSuffix: true })}</p>
+                      <p className="text-[12px] text-muted-foreground">{recordLabel(prLabel(r.type as PRType), r.side)} · {formatDistanceToNowStrict(new Date(r.achieved_at), { addSuffix: true })}</p>
                     </div>
                     <span className="shrink-0 text-[14px] font-semibold tabular">
                       {r.type === "best_e1rm" ? `${fmtW(Number(r.value))}*` : r.type === "most_reps" ? `${r.reps} reps` : r.type === "least_assistance" ? `${fmtW(Number(r.value))} assist` : `${r.exercise.load_type === "weighted_bodyweight" ? "+" : ""}${fmtW(Number(r.load_kg))} × ${r.reps}`}

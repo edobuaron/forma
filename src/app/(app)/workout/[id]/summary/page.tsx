@@ -5,14 +5,15 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { comparisonText, formatSetLong } from "@/components/workout/format";
-import { compareSet, previousCounterpart } from "@/lib/domain/comparison";
-import { headline, recommend } from "@/lib/domain/progression";
+import { recordLabel, StreamComparisonList } from "@/components/workout/stream-comparison";
+import { compareStreams } from "@/lib/domain/comparison";
+import { headline, recommendFor } from "@/lib/domain/progression";
+import { attachmentLabel, compatibleHistory } from "@/lib/domain/sides";
+import { normalizeSet } from "@/lib/data/set-rows";
 import { prLabel, type PRType } from "@/lib/domain/prs";
-import { completedWorkingSets } from "@/lib/domain/sets";
 import { formatVolume, formatWeight } from "@/lib/domain/units";
 import { getProfile, getSessionFull, recentHistory, sessionRecords } from "@/lib/data/queries";
-import { toExerciseConfig, toLoggedSet, toPrescription } from "@/lib/data/types";
+import { isWorkingRow, rowVolumeKg, toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription } from "@/lib/data/types";
 import { requireUser } from "@/lib/supabase/server";
 import { formatMinutes } from "@/lib/utils";
 
@@ -26,27 +27,28 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   const exIds = [...new Set(session.exercises.map((e) => e.exercise_id))];
   const [profile, before, withThis, records] = await Promise.all([
     getProfile(supabase),
-    recentHistory(supabase, exIds, 1, id),
+    recentHistory(supabase, exIds, 6, id),
     recentHistory(supabase, exIds, 6),
     sessionRecords(supabase, id),
   ]);
   const unit = profile.unit;
   const duration = session.ended_at ? new Date(session.ended_at).getTime() - new Date(session.started_at).getTime() : 0;
   const performed = session.exercises.filter((e) => e.sets.some((s) => s.completed));
-  const totalSets = performed.reduce((a, e) => a + e.sets.filter((s) => s.completed && s.kind === "working").length, 0);
-  const volume = performed.reduce((a, e) => a + e.sets.filter((s) => s.completed && s.kind === "working").reduce((b, s) => b + Number(s.weight_kg ?? 0) * (s.reps ?? 0), 0), 0);
+  const totalSets = performed.reduce((a, e) => a + e.sets.filter(isWorkingRow).length, 0);
+  const volume = performed.reduce((a, e) => a + e.sets.reduce((b, s) => b + rowVolumeKg(s), 0), 0);
 
   const rows = performed.map((e) => {
     const cfg = toExerciseConfig(e.exercise);
-    const prev = before.byExercise.get(e.exercise_id)?.[0];
-    const cur = e.sets.map(toLoggedSet);
-    // Pair by position; a set without a logged load shows no comparison rather than a false one.
-    const ws = completedWorkingSets(cur);
-    const cmps = ws.map((s, i) => compareSet(s, prev ? previousCounterpart(prev.sets, i, cfg) : null, cfg));
+    const attachment = toAttachmentRef(e);
+    // Each stream (together, left, right) is compared with the same stream, in a compatible setup only.
+    const earlier = compatibleHistory(before.byExercise.get(e.exercise_id) ?? [], attachment);
+    const streams = compareStreams(e.sets.map((s) => toLoggedSet(normalizeSet(s))), earlier, cfg);
+    const cmps = streams.map((c) => c.comparison);
     const improved = cmps.filter((c) => c.status === "improved").length;
     const below = cmps.filter((c) => c.status === "below").length;
-    const rec = recommend(cfg, toPrescription(e.prescribed, e.exercise), withThis.byExercise.get(e.exercise_id) ?? [], { conservative: profile.progression_conservative });
-    return { e, cfg, ws, cmps, improved, below, hasPrev: !!prev, rec, prs: records.filter((r) => r.exercise_id === e.exercise_id) };
+    const rec = recommendFor(cfg, toPrescription(e.prescribed, e.exercise), withThis.byExercise.get(e.exercise_id) ?? [],
+      { sides: e.track_sides, attachment }, { conservative: profile.progression_conservative });
+    return { e, cfg, streams, cmps, improved, below, hasPrev: cmps.some((c) => c.status !== "no_previous"), rec, attachment, prs: records.filter((r) => r.exercise_id === e.exercise_id) };
   });
   const improvements = rows.filter((r) => r.improved > 0 && r.below === 0);
 
@@ -80,7 +82,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
               const ex = session.exercises.find((e) => e.exercise_id === r.exercise_id)?.exercise;
               return (
                 <li key={r.id} className="flex items-baseline justify-between gap-3 text-[14px]">
-                  <span><span className="font-medium">{ex?.name}</span> <span className="text-muted-foreground">· {prLabel(r.type as PRType)}</span></span>
+                  <span><span className="font-medium">{ex?.name}</span> <span className="text-muted-foreground">· {recordLabel(prLabel(r.type as PRType), r.side)}</span></span>
                   <span className="shrink-0 font-medium tabular">
                     {r.type === "best_e1rm" ? `${formatWeight(Number(r.value), unit)} est.` : r.type === "least_assistance" ? formatWeight(Number(r.value), unit) + " assist" : `${formatWeight(Number(r.load_kg ?? 0), unit)} × ${r.reps}`}
                   </span>
@@ -112,17 +114,8 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                   : <Badge>Mixed</Badge>
               ) : <Badge tone="outline">First session</Badge>}
             </div>
-            <div className="space-y-1">
-              {r.ws.map((s, i) => {
-                const t = comparisonText(r.cmps[i], unit, r.cfg.loadType);
-                return (
-                  <div key={i} className="flex items-center justify-between text-[14px]">
-                    <span className="tabular"><span className="mr-3 text-muted-foreground">{i + 1}</span>{formatSetLong(s, r.cfg.loadType, unit)}</span>
-                    {t && <span className={`text-[12.5px] ${t.tone === "positive" ? "text-positive" : t.tone === "negative" ? "text-negative" : "text-muted-foreground"}`}>{t.text}</span>}
-                  </div>
-                );
-              })}
-            </div>
+            {r.attachment.state && <p className="mb-1.5 text-[12.5px] text-muted-foreground">Attachment: {attachmentLabel(r.attachment)}</p>}
+            <StreamComparisonList items={r.streams} loadType={r.cfg.loadType} unit={unit} />
             <p className="mt-3 border-t pt-3 text-[13px] text-muted-foreground">
               <span className="font-medium text-foreground">Next time:</span> {headline(r.rec, r.cfg, unit).replace(" today.", " next session.")}
             </p>

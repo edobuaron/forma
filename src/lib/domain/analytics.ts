@@ -1,5 +1,6 @@
 import { setE1rm } from "./e1rm";
-import { effectiveLoad, sameLoad, workingSets } from "./sets";
+import { effectiveLoad, sameLoad } from "./sets";
+import { performedSets, sessionMode, setPerformed, setVolumeKg, type LoggingMode } from "./sides";
 import type { ExerciseConfig, ExercisePerformance, LoggedSet } from "./types";
 
 /** Per-session aggregate for one exercise — the unit plotted on progress charts. */
@@ -10,15 +11,18 @@ export interface SessionPoint {
   repsAtTop: number; // best reps at that load
   bestE1rmKg: number | null; // null when not appropriate
   totalReps: number;
-  volumeKg: number; // Σ load × reps (external load only)
-  workingSets: number;
+  volumeKg: number; // Σ load × reps (external load only); sides recorded separately add up
+  workingSets: number; // planned sets with recorded work; a left/right pair counts once
+  /** How the session was logged. Volume isn't comparable across a change of mode. */
+  mode: LoggingMode;
 }
 
 /** Aggregate each session to one point. We never connect individual sets across sessions. */
 export function sessionPoints(ex: ExerciseConfig, history: ExercisePerformance[]): SessionPoint[] {
   return history
     .map((h) => {
-      const ws = workingSets(h.sets, ex);
+      // Actual sets: each side of a pair is its own set for loads and bests, never a merged pair.
+      const ws = performedSets(h.sets, ex);
       if (ws.length === 0) return null;
       const loads = ws.map((s) => effectiveLoad(s, ex));
       const top = Math.max(...loads);
@@ -31,8 +35,9 @@ export function sessionPoints(ex: ExerciseConfig, history: ExercisePerformance[]
         repsAtTop,
         bestE1rmKg: e1rms.length ? Math.round(Math.max(...e1rms) * 10) / 10 : null,
         totalReps: ws.reduce((a, s) => a + s.reps!, 0),
-        volumeKg: Math.round(ws.reduce((a, s) => a + Math.max(0, s.weightKg ?? 0) * s.reps!, 0)),
-        workingSets: ws.length,
+        volumeKg: Math.round(h.sets.filter((s) => s.kind === "working").reduce((a, s) => a + setVolumeKg(s, ex), 0)),
+        workingSets: h.sets.filter((s) => s.kind === "working" && setPerformed(s)).length,
+        mode: sessionMode(h.sets),
       } satisfies SessionPoint;
     })
     .filter((p): p is SessionPoint => p != null)
@@ -42,7 +47,7 @@ export function sessionPoints(ex: ExerciseConfig, history: ExercisePerformance[]
 /** Best reps achieved at each load ever used — a rep-PR table. */
 export function bestRepsByLoad(ex: ExerciseConfig, sets: LoggedSet[]): { loadKg: number; reps: number }[] {
   const m = new Map<number, number>();
-  for (const s of workingSets(sets, ex)) {
+  for (const s of performedSets(sets, ex)) {
     const l = effectiveLoad(s, ex);
     m.set(l, Math.max(m.get(l) ?? 0, s.reps!));
   }
@@ -51,7 +56,7 @@ export function bestRepsByLoad(ex: ExerciseConfig, sets: LoggedSet[]): { loadKg:
 
 /** Highest load lifted for at least `minReps` reps (rep-range strength). */
 export function bestLoadForReps(ex: ExerciseConfig, sets: LoggedSet[], minReps: number): number | null {
-  const loads = workingSets(sets, ex).filter((s) => s.reps! >= minReps).map((s) => effectiveLoad(s, ex));
+  const loads = performedSets(sets, ex).filter((s) => s.reps! >= minReps).map((s) => effectiveLoad(s, ex));
   return loads.length ? Math.max(...loads) : null;
 }
 
@@ -67,6 +72,8 @@ export interface MuscleSet {
   date: string;
   primary: string[];
   secondary: string[];
+  /** Share of one set: 1, or ½ for a left/right pair with one side done. Default 1. */
+  credit?: number;
 }
 
 /** Weekly working sets per muscle: primary muscles count 1, secondary 0.5. */
@@ -75,8 +82,9 @@ export function weeklySetsPerMuscle(items: MuscleSet[]): Map<string, Map<string,
   for (const it of items) {
     const wk = weekStart(new Date(it.date));
     const m = out.get(wk) ?? new Map<string, number>();
-    for (const p of it.primary) m.set(p, (m.get(p) ?? 0) + 1);
-    for (const s of it.secondary) m.set(s, (m.get(s) ?? 0) + 0.5);
+    const c = it.credit ?? 1;
+    for (const p of it.primary) m.set(p, (m.get(p) ?? 0) + c);
+    for (const s of it.secondary) m.set(s, (m.get(s) ?? 0) + 0.5 * c);
     out.set(wk, m);
   }
   return out;

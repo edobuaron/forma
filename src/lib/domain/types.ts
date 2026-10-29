@@ -29,13 +29,39 @@ export interface Prescription {
   targetRir: number | null;
 }
 
+export type Side = "left" | "right";
+
+/** One side of a set whose sides were recorded separately. A side not performed has completed = false. */
+export interface SideLog {
+  weightKg: number | null;
+  assistanceKg: number | null;
+  reps: number | null;
+  rir: number | null;
+  completed: boolean;
+}
+
 export interface LoggedSet {
   kind: SetKind;
   weightKg: number | null;
   assistanceKg: number | null;
   reps: number | null;
   rir: number | null;
+  /** For a set with sides: at least one side was performed. */
   completed: boolean;
+  /**
+   * Present only when left and right were recorded independently. The set's own load, reps and RIR
+   * are then null. Sets logged with one shared value (including "per side" / "per dumbbell" weights)
+   * never have this.
+   */
+  sides?: Record<Side, SideLog> | null;
+}
+
+/** Which cable attachment a workout recorded. state null = not recorded (unknown), "none" = no attachment. */
+export interface AttachmentRef {
+  state: "none" | "attachment" | null;
+  id: string | null;
+  /** Name as it was when chosen for that workout. */
+  name: string | null;
 }
 
 /** One exercise's performance within one completed session. */
@@ -47,4 +73,6 @@ export interface ExercisePerformance {
   bodyweightKg?: number | null;
   /** Session-level reason for omitted planned sets. Only meaningful for exercises short of their prescription. */
   shortfallReason?: ShortfallReason | null;
+  /** Attachment recorded for this exercise in that session. Absent = not recorded. */
+  attachment?: AttachmentRef | null;
 }

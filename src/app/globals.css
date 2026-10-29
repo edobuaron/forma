@@ -19,6 +19,9 @@
   --accent-soft: oklch(0.55 0.17 262 / 0.09);
   --positive: oklch(0.52 0.12 155);
   --negative: oklch(0.6 0.13 55);
+  /* completed work (teal) and pending / not yet done (amber). Never the only signal: always paired with text or an icon. */
+  --done: oklch(0.56 0.09 190);
+  --pending: oklch(0.62 0.12 70);
   --chart-grid: oklch(0.92 0.004 270);
   --chart-muted: oklch(0.75 0.008 270);
   --shadow-card: 0 1px 2px oklch(0.2 0.01 270 / 0.04), 0 1px 1px oklch(0.2 0.01 270 / 0.02);
@@ -41,6 +44,8 @@
   --accent-soft: oklch(0.68 0.15 262 / 0.14);
   --positive: oklch(0.74 0.12 155);
   --negative: oklch(0.76 0.12 65);
+  --done: oklch(0.74 0.09 190);
+  --pending: oklch(0.78 0.11 75);
   --chart-grid: oklch(0.26 0.006 270);
   --chart-muted: oklch(0.45 0.01 270);
   --shadow-card: 0 0 0 0 transparent;
@@ -62,6 +67,8 @@
   --color-accent-soft: var(--accent-soft);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
+  --color-done: var(--done);
+  --color-pending: var(--pending);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --radius-sm: 8px;

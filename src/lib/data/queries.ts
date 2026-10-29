@@ -3,7 +3,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ExercisePerformance } from "@/lib/domain/types";
 import {
-  toLoggedSet, toPrescription,
+  toAttachmentRef, toLoggedSet, toPrescription,
+  type AttachmentRow,
   type BodyMeasurementRow, type ExerciseRow, type PersonalRecordRow, type ProfileRow, type ProgramRow,
   type SessionExerciseRow, type SessionRow, type SetHistoryRow, type SetLogRow, type TemplateExerciseRow,
   type TemplateRow,
@@ -60,6 +61,15 @@ export async function listExercises(db: DB, opts: { includeArchived?: boolean } 
 
 export async function getExercise(db: DB, id: string): Promise<ExerciseRow | null> {
   return check(await db.from("exercises").select("*").eq("id", id).maybeSingle()) as ExerciseRow | null;
+}
+
+// ---------- attachments ----------
+/** The caller's attachments, seeding the starter list on first use (once per account). */
+export async function listAttachments(db: DB, opts: { includeArchived?: boolean } = {}): Promise<AttachmentRow[]> {
+  await db.rpc("ensure_starter_attachments");
+  let q = db.from("attachments").select("id, name, starter_key, archived_at, created_at").order("name");
+  if (!opts.includeArchived) q = q.is("archived_at", null);
+  return check(await q) as AttachmentRow[];
 }
 
 // ---------- programs ----------
@@ -199,6 +209,7 @@ export function groupHistory(rows: SetHistoryRow[]): Map<string, ExercisePerform
       prescription: r.prescribed && Object.keys(r.prescribed).length ? toPrescription(r.prescribed) : null,
       bodyweightKg: r.bodyweight_kg == null ? null : Number(r.bodyweight_kg),
       shortfallReason: r.shortfall_reason ?? null,
+      attachment: toAttachmentRef(r),
     };
     p.sets.push(toLoggedSet(r));
     m.set(r.session_id, p);

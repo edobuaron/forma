@@ -1,6 +1,7 @@
 import type { SetComparison } from "@/lib/domain/comparison";
 import type { LoadType, LoggedSet, WeightUnit } from "@/lib/domain/types";
 import { formatWeight, kgToDisplay } from "@/lib/domain/units";
+import { sessionMode, sideShort, sideStream } from "@/lib/domain/sides";
 
 export function loadColumnLabel(loadType: LoadType, unit: WeightUnit) {
   if (loadType === "assisted") return `Assist`;
@@ -61,4 +62,21 @@ export function comparisonText(c: SetComparison, unit: WeightUnit, loadType: Loa
       return { text: `${load(c.loadDeltaKg)}, ${reps(c.repDelta)}`, tone };
     }
   }
+}
+
+/** "L 25 kg × 10, 9 · R 22.5 kg × 8" for sets whose sides were recorded separately; a side not performed is left out. */
+export function formatSidesCompact(sets: LoggedSet[], loadType: LoadType, unit: WeightUnit): string {
+  const side = (k: "left" | "right") => {
+    const done = sideStream(sets, k).filter((s) => s.kind === "working" && s.completed && s.reps != null);
+    return done.length ? `${sideShort[k]} ${formatSetsCompact(done, loadType, unit)}` : `${sideShort[k]} not done`;
+  };
+  return `${side("left")} · ${side("right")}`;
+}
+
+/** Working sets of a past session, in the way they were logged. */
+export function formatPerformance(sets: LoggedSet[], loadType: LoadType, unit: WeightUnit, valid: LoggedSet[]): string {
+  const mode = sessionMode(sets);
+  if (mode === "together") return formatSetsCompact(valid, loadType, unit);
+  if (mode === "sides") return formatSidesCompact(sets, loadType, unit);
+  return `${formatSetsCompact(valid, loadType, unit)} · ${formatSidesCompact(sets, loadType, unit)}`;
 }

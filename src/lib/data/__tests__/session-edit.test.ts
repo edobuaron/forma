@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { draftFromSession, savedDraft, toSessionEdit, validateDraft } from "../session-edit";
 import type { SessionFull } from "../queries";
-import type { ExerciseRow, SetLogRow } from "../types";
+import { emptySideColumns, type ExerciseRow, type SetLogRow } from "../types";
 
 const exercise = (load_type: ExerciseRow["load_type"], name: string) => ({ id: `ex-${name}`, name, load_type }) as ExerciseRow;
 const set = (o: Partial<SetLogRow>): SetLogRow => ({
   id: "set1", session_id: "s1", session_exercise_id: "se1", position: 0, kind: "working",
-  weight_kg: null, assistance_kg: null, reps: 5, rir: null, completed: true, completed_at: null, notes: null, ...o,
+  weight_kg: null, assistance_kg: null, reps: 5, rir: null, completed: true, completed_at: null, notes: null,
+  ...emptySideColumns(), ...o,
 });
 const session = (sets: SetLogRow[], ex = exercise("assisted", "Assisted Dip")): SessionFull => ({
   id: "s1", name: "Upper", notes: null, status: "completed",
@@ -53,5 +54,31 @@ describe("history editor draft", () => {
     expect(d.shortfallReason).toBe("time");
     expect(toSessionEdit({ ...d, shortfallReason: "equipment" }).session.shortfall_reason).toBe("equipment");
     expect(toSessionEdit({ ...d, shortfallReason: null }).session.shortfall_reason).toBeNull();
+  });
+});
+
+describe("history editor with sides", () => {
+  const sidedSet = (o: Partial<SetLogRow>) => set({
+    reps: null, sided: true, left_weight_kg: 25, left_reps: 10, left_completed: true, right_weight_kg: 25, right_reps: 7, right_completed: false, ...o,
+  });
+  const ex = exercise("external", "Single-arm row");
+
+  it("sends a side that wasn't done without values, so it's stored as not performed", () => {
+    const edit = toSessionEdit(draftFromSession(session([sidedSet({})], ex)));
+    const s = edit.exercises[0].sets[0];
+    expect(s).toMatchObject({ sided: true, left_completed: true, left_weight_kg: 25, left_reps: 10, right_completed: false });
+    expect(s).not.toHaveProperty("right_reps");
+  });
+
+  it("requires at least one done side, and reps and load on each done side", () => {
+    expect(validateDraft(draftFromSession(session([sidedSet({ left_completed: false })], ex)))).toMatch(/at least one side/);
+    expect(validateDraft(draftFromSession(session([sidedSet({ left_weight_kg: null })], ex)))).toMatch(/weight for every left side/);
+    expect(validateDraft(draftFromSession(session([sidedSet({})], ex)))).toBeNull();
+  });
+
+  it("keeps the exercise's mode and attachment in the payload", () => {
+    const s = session([sidedSet({})], ex);
+    Object.assign(s.exercises[0], { track_sides: true, attachment_state: "none", attachment_id: null });
+    expect(toSessionEdit(draftFromSession(s)).exercises[0]).toMatchObject({ track_sides: true, attachment_state: "none", attachment_id: null });
   });
 });

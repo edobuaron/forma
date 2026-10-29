@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { recomputeRecords } from "../mutations";
-import type { ExerciseRow, SetHistoryRow } from "../types";
+import { emptySideColumns, type ExerciseRow, type SetHistoryRow } from "../types";
 
 const exercise = { id: "ex1", name: "Row", category: "compound", load_type: "external", progression: "double_progression", increment_kg: 2.5, min_load_kg: 0, available_loads_kg: null, e1rm_eligible: true } as unknown as ExerciseRow;
 const row = (session: string, day: number, weight: number): SetHistoryRow => ({
@@ -9,6 +9,7 @@ const row = (session: string, day: number, weight: number): SetHistoryRow => ({
   started_at: new Date(Date.UTC(2026, 9, day)).toISOString(), status: "completed", session_name: "W", bodyweight_kg: null,
   prescribed: {}, se_position: 0, position: 0, kind: "working", weight_kg: weight, assistance_kg: null, reps: 8, rir: null,
   completed: true, completed_at: null, shortfall_reason: null,
+  ...emptySideColumns(), attachment_state: null, attachment_id: null, attachment_name: null,
 });
 
 // Fake client: history reads return `history`, and replace_personal_records answers from `replies` in turn.

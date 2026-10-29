@@ -3,14 +3,14 @@ import { format } from "date-fns";
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { workingSets } from "@/lib/domain/sets";
+import { attachmentLabel, performedSets, sideAsSet, sideShort, SIDES } from "@/lib/domain/sides";
 import type { ExerciseConfig, ExercisePerformance, WeightUnit } from "@/lib/domain/types";
 import { formatSetLong } from "./format";
 
 export function PreviousSessionSheet({
   open, onOpenChange, ex, history, unit,
 }: { open: boolean; onOpenChange: (o: boolean) => void; ex: ExerciseConfig; history: ExercisePerformance[]; unit: WeightUnit }) {
-  const sessions = history.filter((h) => workingSets(h.sets, ex).length > 0).slice(0, 4);
+  const sessions = history.filter((h) => performedSets(h.sets, ex).length > 0).slice(0, 4);
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent title={ex.name} description="Recent sessions">
@@ -22,6 +22,7 @@ export function PreviousSessionSheet({
                 <p className="text-[13px] font-medium">
                   {i === 0 ? "Last time · " : ""}
                   <span className="text-muted-foreground">{format(new Date(s.date), "EEE d MMM yyyy")}</span>
+                  {s.attachment?.state && <span className="text-muted-foreground"> · {attachmentLabel(s.attachment)}</span>}
                 </p>
                 <Link href={`/history/${s.sessionId}`} className="flex items-center gap-1 text-[12px] text-accent">
                   Session <ExternalLink className="size-3" />
@@ -31,8 +32,23 @@ export function PreviousSessionSheet({
                 {s.sets.filter((x) => x.completed).map((x, j) => (
                   <div key={j} className="flex items-center justify-between border-b px-3 py-2 text-[14px] last:border-0">
                     <span className="w-14 text-muted-foreground">{x.kind === "warmup" ? "Warm-up" : `Set ${s.sets.filter((y) => y.kind === "working" && y.completed).indexOf(x) + 1}`}</span>
-                    <span className="flex-1 font-medium tabular">{formatSetLong(x, ex.loadType, unit)}</span>
-                    {x.rir != null && <span className="text-[12px] text-muted-foreground tabular">RIR {x.rir}</span>}
+                    {x.sides ? (
+                      <span className="flex flex-1 flex-col font-medium tabular">
+                        {SIDES.map((sd) => {
+                          const v = sideAsSet(x, sd);
+                          return (
+                            <span key={sd}>
+                              <span className="mr-1.5 text-[12px] text-muted-foreground">{sideShort[sd]}</span>
+                              {v.completed ? formatSetLong(v, ex.loadType, unit) : <span className="font-normal text-muted-foreground">not done</span>}
+                              {v.completed && v.rir != null && <span className="ml-2 text-[12px] font-normal text-muted-foreground">RIR {v.rir}</span>}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    ) : (
+                      <span className="flex-1 font-medium tabular">{formatSetLong(x, ex.loadType, unit)}</span>
+                    )}
+                    {!x.sides && x.rir != null && <span className="text-[12px] text-muted-foreground tabular">RIR {x.rir}</span>}
                   </div>
                 ))}
               </div>

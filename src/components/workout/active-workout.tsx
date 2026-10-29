@@ -9,18 +9,24 @@ import { Button } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/dropdown";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { reconcileCompletion, setProblem } from "@/lib/domain/set-validation";
-import { previousCounterpart } from "@/lib/domain/comparison";
-import { recommend, type Recommendation } from "@/lib/domain/progression";
+import { setProblem, sideValues } from "@/lib/domain/set-validation";
+import { previousCounterpart, previousFor } from "@/lib/domain/comparison";
+import { recommendFor, type Recommendation } from "@/lib/domain/progression";
 import { isShortOfPlan } from "@/lib/domain/shortfall";
-import type { ExercisePerformance, ShortfallReason } from "@/lib/domain/types";
+import { compatibleHistory, doneWorkingSets, setDone, setPerformed, sideLabel, sideStream } from "@/lib/domain/sides";
+import type { AttachmentRef, ExercisePerformance, ShortfallReason, Side } from "@/lib/domain/types";
 import { dismissRecommendation, discardWorkout, finishWorkout, recomputeRecords } from "@/lib/data/mutations";
 import type { SessionFull } from "@/lib/data/queries";
 import { recentHistory } from "@/lib/data/queries";
 import { SyncQueue, type LocalCopy, type SyncOp, type SyncStatus } from "@/lib/data/sync-queue";
-import { toExerciseConfig, toPrescription, type ExerciseRow, type ProfileRow } from "@/lib/data/types";
+import {
+  copyLeftToRight, newSet, normalizeSet, patchSide, plannedSets, reconcileSet, removalKind, removeSet, renumber, restoreSet,
+  setSideCompleted, switchMode, type RemovedSet, type SidePatch,
+} from "@/lib/data/set-rows";
+import { toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription, type AttachmentRow, type ExerciseRow, type ProfileRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
 import { formatDuration, uuid } from "@/lib/utils";
+import { AttachmentPicker } from "./attachment-picker";
 import { ExerciseCard } from "./exercise-card";
 import { ExercisePicker } from "./exercise-picker";
 import { RestTimer, type RestState } from "./rest-timer";
@@ -31,6 +37,7 @@ interface Props {
   initialSession: SessionFull;
   initialHistory: Record<string, ExercisePerformance[]>;
   library: ExerciseRow[];
+  attachments: AttachmentRow[];
   profile: ProfileRow;
   dismissed: string[];
   warmupNotes: string | null;
@@ -46,12 +53,11 @@ function toWorkout(s: SessionFull): WExercise[] {
     position: e.position,
     prescribed: e.prescribed ?? {},
     notes: e.notes,
-    sets: e.sets.map(({ session_id: _s, session_exercise_id: _se, ...set }) => ({
-      ...set,
-      weight_kg: set.weight_kg == null ? null : Number(set.weight_kg),
-      assistance_kg: set.assistance_kg == null ? null : Number(set.assistance_kg),
-      rir: set.rir == null ? null : Number(set.rir),
-    })),
+    track_sides: !!e.track_sides,
+    attachment_state: e.attachment_state ?? null,
+    attachment_id: e.attachment_id ?? null,
+    attachment_name: e.attachment_name ?? null,
+    sets: e.sets.map(({ session_id: _s, session_exercise_id: _se, ...set }) => normalizeSet(set)),
   }));
 }
 
@@ -67,7 +73,10 @@ function applyPending(items: WExercise[], ops: SyncOp[], library: ExerciseRow[])
         const exercise = library.find((l) => l.id === row.exercise_id) ?? existing?.exercise;
         if (!exercise) continue;
         if (existing) Object.assign(existing, row, { exercise });
-        else out.push({ id: op.id, sets: [], template_exercise_id: null, substituted_for: null, notes: null, prescribed: {}, position: 0, ...row, exercise } as WExercise);
+        else out.push({
+          id: op.id, sets: [], template_exercise_id: null, substituted_for: null, notes: null, prescribed: {}, position: 0,
+          track_sides: false, attachment_state: null, attachment_id: null, attachment_name: null, ...row, exercise,
+        } as WExercise);
       }
     } else if (op.table === "set_logs") {
       const row = op.row as Partial<WSet> & { session_exercise_id?: string };
@@ -80,7 +89,7 @@ function applyPending(items: WExercise[], ops: SyncOp[], library: ExerciseRow[])
         } else if (row.session_exercise_id === i.id) {
           const { session_exercise_id: _x, ...rest } = row as WSet & { session_exercise_id: string; session_id?: string };
           delete (rest as { session_id?: string }).session_id;
-          i.sets.push(rest as WSet);
+          i.sets.push(normalizeSet(rest as WSet));
         }
       }
     }
@@ -90,12 +99,15 @@ function applyPending(items: WExercise[], ops: SyncOp[], library: ExerciseRow[])
   return out;
 }
 
-export function ActiveWorkout({ initialSession, initialHistory, library, profile, dismissed: initialDismissed, warmupNotes }: Props) {
+export function ActiveWorkout({ initialSession, initialHistory, library, attachments: initialAttachments, profile, dismissed: initialDismissed, warmupNotes }: Props) {
   const router = useRouter();
   const db = useMemo(() => createClient(), []);
   const sessionId = initialSession.id;
   const queueRef = useRef<SyncQueue | null>(null);
   const [items, setItems] = useState<WExercise[]>(() => toWorkout(initialSession));
+  // Latest items for callbacks that outlive a render (the Undo action of a toast).
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const [history, setHistory] = useState<Record<string, ExercisePerformance[]>>(initialHistory);
   const [notes, setNotes] = useState(initialSession.notes ?? "");
   const [shortfallReason, setShortfallReason] = useState<ShortfallReason | null>(null);
@@ -106,6 +118,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
   const [finishing, setFinishing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState(() => new Set(initialDismissed));
+  const [attachments, setAttachments] = useState(initialAttachments);
+  const [attachmentFor, setAttachmentFor] = useState<string | null>(null);
   const unit = profile.unit;
   const restKey = `forma:rest:${sessionId}`;
   // A workout logged for a past day starts well before the row was created. It has no live clock
@@ -160,7 +174,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
   }, [sessionId]);
 
   const enqueueItem = useCallback((item: WExercise) => {
-    const { exercise: _e, sets: _s, id, ...row } = item;
+    // attachment_name is written by the server from the chosen attachment; never sent.
+    const { exercise: _e, sets: _s, id, attachment_name: _n, ...row } = item;
     queueRef.current?.enqueue({ table: "session_exercises", id, kind: "upsert", row: { ...row, session_id: sessionId } });
   }, [sessionId]);
 
@@ -169,7 +184,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
     const m = new Map<string, Recommendation>();
     for (const it of items) {
       const cfg = toExerciseConfig(it.exercise);
-      m.set(it.id, recommend(cfg, toPrescription(it.prescribed, it.exercise), history[it.exercise_id] ?? [], { conservative: profile.progression_conservative }));
+      m.set(it.id, recommendFor(cfg, toPrescription(it.prescribed, it.exercise), history[it.exercise_id] ?? [],
+        { sides: it.track_sides, attachment: toAttachmentRef(it) }, { conservative: profile.progression_conservative }));
     }
     return m;
   }, [items, history, profile.progression_conservative]);
@@ -181,7 +197,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
 
   function onSetChange(item: WExercise, setId: string, patch: Partial<WSet>) {
     const set = item.sets.find((s) => s.id === setId)!;
-    const next = reconcileCompletion({ ...set, ...patch }, item.exercise.load_type);
+    const next = reconcileSet({ ...set, ...patch }, item.exercise.load_type);
     if (set.completed && !next.completed && setProblem(next, item.exercise.load_type)) toast("Set marked incomplete. Fill in the required values and complete it again.");
     updateItem(item.id, (i) => ({ ...i, sets: i.sets.map((s) => (s.id === setId ? next : s)) }));
     enqueueSet(item, next);
@@ -229,13 +245,84 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
     }
   }
 
+  // ---------- sides ----------
+  function onSideChange(item: WExercise, setId: string, side: Side, patch: SidePatch) {
+    const set = item.sets.find((s) => s.id === setId)!;
+    const next = patchSide(set, side, patch, item.exercise.load_type);
+    if (set[`${side}_completed`] && !next[`${side}_completed`]) toast(`${sideLabel[side]} side marked not done. Fill in the required values and complete it again.`);
+    updateItem(item.id, (i) => ({ ...i, sets: i.sets.map((s) => (s.id === setId ? next : s)) }));
+    enqueueSet(item, next);
+  }
+
+  function onCompleteSide(item: WExercise, setId: string, side: Side) {
+    const set = item.sets.find((s) => s.id === setId)!;
+    const cfg = toExerciseConfig(item.exercise);
+    if (set[`${side}_completed`]) {
+      const next = setSideCompleted(set, side, false, null, {}, cfg.loadType);
+      updateItem(item.id, (i) => ({ ...i, sets: i.sets.map((s) => (s.id === setId ? next : s)) }));
+      enqueueSet(item, next);
+      return;
+    }
+    // Suggestions for this side only: its own recommendation, then the same side last time.
+    const rec = recommendations.get(item.id)?.sides?.[side];
+    const sidedIdx = item.sets.filter((s) => s.kind === "working" && s.sided).findIndex((s) => s.id === setId);
+    const prev = previousFor(compatibleHistory(history[item.exercise_id] ?? [], toAttachmentRef(item)), side, cfg);
+    const prevSet = sidedIdx >= 0 && prev ? previousCounterpart(prev.sets, sidedIdx, cfg) : null;
+    const working = set.kind === "working";
+    const values: SidePatch = {
+      reps: set[`${side}_reps`] ?? (working ? rec?.targetReps?.[sidedIdx] ?? prevSet?.reps ?? null : null),
+    };
+    if (values.reps == null) { toast(`Enter ${sideLabel[side].toLowerCase()} reps first`); return; }
+    if (cfg.loadType === "assisted") {
+      values.assistance_kg = set[`${side}_assistance_kg`] ?? (working ? rec?.targetLoadKg ?? prevSet?.assistanceKg ?? null : null);
+      if (values.assistance_kg == null) { toast(`Enter the ${sideLabel[side].toLowerCase()} assistance first (0 if none)`); return; }
+    } else {
+      const bw = cfg.loadType === "bodyweight" || cfg.loadType === "weighted_bodyweight";
+      values.weight_kg = set[`${side}_weight_kg`] ?? (working ? rec?.targetLoadKg ?? prevSet?.weightKg ?? null : null) ?? (bw ? 0 : null);
+      if (values.weight_kg == null) { toast(`Enter a ${sideLabel[side].toLowerCase()} weight first`); return; }
+    }
+    const candidate = patchSide(set, side, values, cfg.loadType);
+    const problem = setProblem(sideValues(candidate, side), cfg.loadType);
+    if (problem) { toast(problem); return; }
+    const next = setSideCompleted(candidate, side, true, backdated ? initialSession.started_at : new Date().toISOString(), {}, cfg.loadType);
+    updateItem(item.id, (i) => ({ ...i, sets: i.sets.map((s) => (s.id === setId ? next : s)) }));
+    enqueueSet(item, next);
+    // Rest once the pair is done, not between sides.
+    if (profile.auto_rest_timer && !backdated && working && setDone(toLoggedSet(next))) {
+      const restS = item.prescribed.rest_s ?? item.exercise.default_rest_s ?? profile.default_rest_s;
+      if (restS > 0) setRest({ endAt: Date.now() + restS * 1000, duration: restS, label: item.exercise.name });
+    }
+  }
+
+  function onCopyLeftToRight(item: WExercise, setId: string) {
+    const set = item.sets.find((s) => s.id === setId)!;
+    const next = copyLeftToRight(set, item.exercise.load_type);
+    updateItem(item.id, (i) => ({ ...i, sets: i.sets.map((s) => (s.id === setId ? next : s)) }));
+    enqueueSet(item, next);
+    if (!next.right_completed) toast("Copied to right. Complete the right side when you've done it.");
+  }
+
+  function onToggleSides(item: WExercise) {
+    const sided = !item.track_sides;
+    const r = switchMode(item.sets, sided);
+    const next = { ...item, track_sides: sided, sets: r.sets };
+    updateItem(item.id, () => next);
+    enqueueItem(next);
+    r.changed.forEach((s) => enqueueSet(next, s));
+    if (r.kept > 0) {
+      toast(`${r.kept} set${r.kept === 1 ? "" : "s"} with logged values stay${r.kept === 1 ? "s" : ""} as ${sided ? "logged together" : "logged per side"}. Nothing was discarded.`);
+    }
+  }
+
+  function onAttachment(item: WExercise, ref: AttachmentRef) {
+    const next: WExercise = { ...item, attachment_state: ref.state, attachment_id: ref.id, attachment_name: ref.name };
+    updateItem(item.id, () => next);
+    enqueueItem(next);
+  }
+
   function onAddSet(item: WExercise, kind: "working" | "warmup") {
     const last = [...item.sets].reverse().find((s) => s.kind === kind) ?? item.sets[item.sets.length - 1];
-    const base: WSet = {
-      id: uuid(), position: 0, kind, weight_kg: kind === "working" ? last?.weight_kg ?? null : null,
-      assistance_kg: kind === "working" ? last?.assistance_kg ?? null : null, reps: null, rir: null,
-      completed: false, completed_at: null, notes: null,
-    };
+    const base = newSet(uuid(), { kind, sided: kind === "working" && item.track_sides, from: last });
     let sets: WSet[];
     if (kind === "warmup") {
       const firstWorking = item.sets.findIndex((s) => s.kind === "working");
@@ -253,8 +340,27 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
   }
 
   function onRemoveSet(item: WExercise, setId: string) {
-    updateItem(item.id, (i) => ({ ...i, sets: i.sets.filter((s) => s.id !== setId) }));
+    const meaning = removalKind(item.prescribed, item.sets, setId);
+    const { sets, removed } = removeSet(item.sets, setId);
+    if (!removed) return;
+    updateItem(item.id, (i) => ({ ...i, sets: removeSet(i.sets, setId).sets }));
     queueRef.current?.enqueue({ table: "set_logs", id: setId, kind: "delete" });
+    const left = sets.filter((s) => s.kind === "working").length;
+    toast(meaning === "planned" ? `Set removed. The plan still has ${plannedSets(item.prescribed, item.sets)} sets, so this one counts as not done.` : "Set removed", {
+      description: meaning === "planned" ? `${left} set${left === 1 ? "" : "s"} left to log for ${item.exercise.name}.` : undefined,
+      duration: 8000,
+      action: { label: "Undo", onClick: () => onUndoRemove(item.id, removed) },
+    });
+  }
+
+  /** Put a removed set back exactly as it was. The delete and this upsert share the row id, so the queue keeps only the latest intent. */
+  function onUndoRemove(itemId: string, removed: RemovedSet) {
+    const item = itemsRef.current.find((i) => i.id === itemId);
+    if (!item) { toast("That exercise was removed, so the set can't be restored."); return; }
+    const r = restoreSet(item.sets, removed);
+    const next = { ...item, sets: r.sets };
+    setItems((cur) => cur.map((i) => (i.id === itemId ? { ...i, sets: restoreSet(i.sets, removed).sets } : i)));
+    r.changed.forEach((s) => enqueueSet(next, s));
   }
 
   function onToggleKind(item: WExercise, setId: string) {
@@ -303,11 +409,16 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
         position: items.length,
         prescribed: { sets: ex.default_sets, rep_min: ex.default_rep_min, rep_max: ex.default_rep_max, rest_s: ex.default_rest_s },
         notes: null,
-        sets: Array.from({ length: ex.default_sets }, (_, i) => ({
-          id: uuid(), position: i, kind: "working" as const, weight_kg: null, assistance_kg: null, reps: null, rir: null,
-          completed: false, completed_at: null, notes: null,
-        })),
+        track_sides: ex.track_sides,
+        attachment_state: ex.default_attachment_state,
+        attachment_id: ex.default_attachment_id,
+        attachment_name: attachments.find((a) => a.id === ex.default_attachment_id)?.name ?? null,
+        sets: Array.from({ length: ex.default_sets }, (_, i) => ({ ...newSet(uuid(), { kind: "working", sided: ex.track_sides }), position: i })),
       };
+      // An archived default isn't offered for new workouts.
+      if (item.attachment_id && !attachments.some((a) => a.id === item.attachment_id && !a.archived_at)) {
+        Object.assign(item, { attachment_state: null, attachment_id: null, attachment_name: null });
+      }
       setItems((cur) => [...cur, item]);
       enqueueItem(item);
       item.sets.forEach((s) => enqueueSet(item, s));
@@ -320,7 +431,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
       }
       const next: WExercise = {
         ...old, exercise: ex, exercise_id: ex.id, substituted_for: old.substituted_for ?? old.exercise_id,
-        sets: old.sets.map((s) => ({ ...s, weight_kg: null, assistance_kg: null })),
+        sets: old.sets.map((s) => ({ ...newSet(s.id, { kind: s.kind, sided: s.sided }), position: s.position })),
       };
       updateItem(old.id, () => next);
       enqueueItem(next);
@@ -344,19 +455,38 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
 
   // ---------- finish / discard ----------
   const counts = useMemo(() => {
-    let done = 0, open = 0;
-    for (const i of items) for (const s of i.sets) (s.completed ? done++ : open++);
-    return { done, open };
+    let done = 0, open = 0, partial = 0, planned = 0, plannedDone = 0;
+    for (const i of items) {
+      const logged = i.sets.map(toLoggedSet);
+      for (const s of logged) {
+        if (setDone(s)) done++;
+        else if (setPerformed(s)) partial++;
+        else open++;
+      }
+      // Progress counts planned working sets; removing a planned set never makes the workout look finished.
+      const p = plannedSets(i.prescribed, i.sets);
+      planned += p;
+      plannedDone += Math.min(p, doneWorkingSets(logged));
+    }
+    return { done, open, partial, planned, plannedDone };
   }, [items]);
   const shortOfPlan = useMemo(
-    () => items.some((i) => isShortOfPlan(i.prescribed, i.sets.filter((s) => s.kind === "working" && s.completed).length)),
+    () => items.some((i) => isShortOfPlan(i.prescribed, doneWorkingSets(i.sets.map(toLoggedSet)))),
     [items],
   );
+  /** The set to do next: the first one not done, in workout order. */
+  const activeSetId = useMemo(() => {
+    for (const i of items) for (const s of i.sets) if (!setDone(toLoggedSet(s))) return s.id;
+    return null;
+  }, [items]);
 
   async function finish() {
     for (const item of items) for (const set of item.sets) {
       if (!set.completed) continue;
-      const problem = setProblem(set, item.exercise.load_type);
+      const problems = set.sided
+        ? (["left", "right"] as Side[]).filter((sd) => set[`${sd}_completed`]).map((sd) => setProblem(sideValues(set, sd), item.exercise.load_type))
+        : [setProblem(set, item.exercise.load_type)];
+      const problem = problems.find(Boolean);
       if (problem) { toast.error(`${item.exercise.name}: ${problem}`); return; }
     }
     setBusy(true);
@@ -403,6 +533,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
   const elapsed = now - startedAt.getTime();
   // ~40 s per completed set plus its prescribed rest
   const estMinutes = Math.max(10, Math.round(items.reduce((a, i) => a + i.sets.filter((x) => x.completed).length * (40 + (i.prescribed.rest_s ?? profile.default_rest_s)), 0) / 60));
+  const pickerItem = items.find((i) => i.id === attachmentFor) ?? null;
 
   return (
     <div className="min-h-dvh pb-40">
@@ -416,6 +547,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
             <p className="truncate text-[15px] font-semibold leading-tight tracking-tight">{initialSession.name}</p>
             <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground tabular">
               {backdated ? <span>Logging for {format(startedAt, "EEE d MMM")}</span> : <span suppressHydrationWarning>{formatDuration(elapsed)}</span>}
+              <span>· {counts.plannedDone}/{counts.planned} sets</span>
               <span aria-live="polite" className="flex items-center gap-1">
                 ·{" "}
                 {sync.status === "saving" ? (<><Loader2 className="size-3 animate-spin" /> Saving</>)
@@ -447,6 +579,14 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
             {backdated ? "Save" : "Finish"}
           </Button>
         </div>
+        {counts.planned > 0 && (
+          <div
+            role="progressbar" aria-label="Planned sets done" aria-valuemin={0} aria-valuemax={counts.planned} aria-valuenow={counts.plannedDone}
+            className="h-0.5 bg-subtle"
+          >
+            <div className="h-full bg-done transition-[width] duration-300" style={{ width: `${(100 * counts.plannedDone) / counts.planned}%` }} />
+          </div>
+        )}
       </header>
 
       <div className="mx-auto max-w-2xl space-y-3 px-3 pt-4 md:px-4">
@@ -469,7 +609,13 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
                 unit={unit}
                 isFirst={idx === 0}
                 isLast={idx === items.length - 1}
+                activeSetId={activeSetId}
                 onSetChange={(id, patch) => onSetChange(item, id, patch)}
+                onSideChange={(id, side, patch) => onSideChange(item, id, side, patch)}
+                onCompleteSide={(id, side) => onCompleteSide(item, id, side)}
+                onCopyLeftToRight={(id) => onCopyLeftToRight(item, id)}
+                onToggleSides={() => onToggleSides(item)}
+                onPickAttachment={() => setAttachmentFor(item.id)}
                 onCompleteSet={(id) => onCompleteSet(item, id)}
                 onAddSet={(k) => onAddSet(item, k)}
                 onRemoveSet={(id) => onRemoveSet(item, id)}
@@ -496,6 +642,16 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
 
       <RestTimer rest={rest} onChange={setRest} sound={profile.rest_sound} />
 
+      <AttachmentPicker
+        open={pickerItem != null}
+        onOpenChange={(o) => !o && setAttachmentFor(null)}
+        title={pickerItem ? `Attachment · ${pickerItem.exercise.name}` : "Attachment"}
+        value={pickerItem ? toAttachmentRef(pickerItem) : null}
+        attachments={attachments}
+        onListChange={setAttachments}
+        onChange={(ref) => pickerItem && onAttachment(pickerItem, ref)}
+      />
+
       <ExercisePicker
         open={picker != null}
         onOpenChange={(o) => !o && setPicker(null)}
@@ -516,9 +672,10 @@ export function ActiveWorkout({ initialSession, initialHistory, library, profile
               <p className="text-[12px] text-muted-foreground">Leave empty to use the estimate of {estMinutes} min. You can change it later in History.</p>
             </div>
           )}
-          {counts.open > 0 && (
+          {(counts.open > 0 || counts.partial > 0) && (
             <p className="mb-4 rounded-md bg-muted px-3 py-2.5 text-[13.5px] text-muted-foreground">
-              {counts.open} set{counts.open === 1 ? "" : "s"} not marked complete will be left out of the record.
+              {counts.open > 0 && `${counts.open} set${counts.open === 1 ? "" : "s"} not marked complete will be left out of the record. `}
+              {counts.partial > 0 && `${counts.partial} set${counts.partial === 1 ? " has" : "s have"} only one side done; the other side is recorded as not performed.`}
             </p>
           )}
           {shortOfPlan && counts.done > 0 && (

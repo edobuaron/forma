@@ -1,8 +1,10 @@
-import type { ExerciseRow, PrescribedJson, SetLogRow } from "@/lib/data/types";
+import type { SetRow } from "@/lib/data/set-rows";
+import type { ExerciseRow, PrescribedJson, SessionExerciseRow } from "@/lib/data/types";
 
-export type WSet = Omit<SetLogRow, "session_id" | "session_exercise_id">;
+export type WSet = SetRow;
+export type { SideField, SidePatch } from "@/lib/data/set-rows";
 
-export interface WExercise {
+export interface WExercise extends Pick<SessionExerciseRow, "track_sides" | "attachment_state" | "attachment_id" | "attachment_name"> {
   id: string;
   exercise: ExerciseRow;
   exercise_id: string;

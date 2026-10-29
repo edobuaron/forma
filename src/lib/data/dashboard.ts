@@ -2,14 +2,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sessionPoints, weekStart, weeklySetsPerMuscle } from "@/lib/domain/analytics";
 import { exerciseInsights, volumeInsights, type Insight } from "@/lib/domain/insights";
-import { recommend, type Recommendation } from "@/lib/domain/progression";
+import { recommendFor, type Recommendation } from "@/lib/domain/progression";
 import type { ExerciseConfig } from "@/lib/domain/types";
 import { format } from "date-fns";
 import {
   completedSetHistory, getActiveProgram, getProfile, groupHistory, listDismissed, listExercises, listSessions,
   recentHistory, recentRecords, toDayWorkout, toStartTemplates,
 } from "./queries";
-import { toExerciseConfig, toPrescription, type ExerciseRow } from "./types";
+import { defaultContext, isWorkingRow, rowSetCredit, rowVolumeKg, toExerciseConfig, toPrescription, type ExerciseRow } from "./types";
 
 export async function loadDashboard(db: SupabaseClient) {
   const now = new Date();
@@ -48,13 +48,13 @@ export async function loadDashboard(db: SupabaseClient) {
   // ----- weekly volume & sets (last 8 weeks) -----
   const weeks: string[] = [];
   for (let i = 7; i >= 0; i--) weeks.push(weekStart(new Date(now.getTime() - i * 7 * 86400000)));
-  const working = rows.filter((r) => r.kind === "working" && (r.reps ?? 0) > 0);
+  const working = rows.filter(isWorkingRow);
   const volumeByWeek = new Map<string, { volume: number; sets: number }>();
   for (const r of working) {
     const wk = weekStart(new Date(r.started_at));
     const v = volumeByWeek.get(wk) ?? { volume: 0, sets: 0 };
-    v.volume += Math.max(0, Number(r.weight_kg ?? 0)) * (r.reps ?? 0);
-    v.sets += 1;
+    v.volume += rowVolumeKg(r);
+    v.sets += rowSetCredit(r);
     volumeByWeek.set(wk, v);
   }
   const weekly = weeks.map((w) => ({ week: w, volume: Math.round(volumeByWeek.get(w)?.volume ?? 0), sets: volumeByWeek.get(w)?.sets ?? 0 }));
@@ -62,7 +62,7 @@ export async function loadDashboard(db: SupabaseClient) {
   const muscleWeeks = weeklySetsPerMuscle(
     working.map((r) => {
       const e = exById.get(r.exercise_id);
-      return { date: r.started_at, primary: e?.primary_muscles ?? [], secondary: e?.secondary_muscles ?? [] };
+      return { date: r.started_at, primary: e?.primary_muscles ?? [], secondary: e?.secondary_muscles ?? [], credit: rowSetCredit(r) };
     }),
   );
 
@@ -99,11 +99,12 @@ export async function loadDashboard(db: SupabaseClient) {
       return {
         exercise: te.exercise,
         cfg,
-        rec: recommend(cfg, toPrescription({ sets: te.sets, rep_min: te.rep_min, rep_max: te.rep_max, rest_s: te.rest_s }), h.byExercise.get(te.exercise_id) ?? [], { conservative: profile.progression_conservative }),
+        rec: recommendFor(cfg, toPrescription({ sets: te.sets, rep_min: te.rep_min, rep_max: te.rep_max, rest_s: te.rest_s }), h.byExercise.get(te.exercise_id) ?? [],
+          defaultContext(te.exercise), { conservative: profile.progression_conservative }),
       };
     }).filter((r) => r.rec.action !== "first_time" && r.rec.action !== "skill" && !dismissed.has(`progression:${r.exercise.id}:${r.rec.evidenceSessionId ?? ""}`));
   }
-  const priority: Record<string, number> = { increase_load: 0, hold_below: 1, consider_reduce: 2, hold_effort: 3, hold_confirm: 4, add_reps_or_load: 5, hold_build_reps: 6, hold_shortened: 7, hold_incomplete: 7, skill: 9, first_time: 10 };
+  const priority: Record<string, number> = { increase_load: 0, hold_below: 1, consider_reduce: 2, hold_effort: 3, hold_confirm: 4, add_reps_or_load: 5, hold_build_reps: 6, hold_shortened: 7, hold_incomplete: 7, hold_sides: 6, sides_baseline: 8, skill: 9, first_time: 10 };
   recs.sort((a, b) => priority[a.rec.action] - priority[b.rec.action]);
 
   // ----- insights -----
