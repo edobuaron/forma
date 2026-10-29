@@ -194,7 +194,8 @@ export function ExerciseCard(p: Props) {
               <p className="text-[13px] text-muted-foreground">First time logging this exercise. Pick a load you could lift for about {Math.max(rx.rep_min ?? 1, (rx.rep_max ?? 10) - 2)} reps with 2 in reserve.</p>
             )}
 
-            {rec && rec.action !== "first_time" && !p.recommendationDismissed && (
+            {/* first_time with a history means nothing comparable (other attachment or mode): say what to do. */}
+            {rec && (rec.action !== "first_time" || latest) && !p.recommendationDismissed && (
               <div className="rounded-md bg-accent-soft px-3 py-2.5">
                 <div className="flex items-start">
                   <p className="flex-1 pr-1 text-[13.5px] font-medium leading-snug text-accent">{headline(rec, ex, unit)}</p>
@@ -372,7 +373,7 @@ export function ExerciseCard(p: Props) {
             })}
           </div>
 
-          <div className="flex items-center gap-1 px-3 pb-3 pt-1 md:px-4">
+          <div className="flex flex-wrap items-center gap-x-1 px-3 pb-3 pt-1 md:px-4">
             <button onClick={() => p.onAddSet("working")} className={footerButton}>
               <Plus className="size-4" /> Add set
             </button>

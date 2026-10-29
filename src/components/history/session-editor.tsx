@@ -338,7 +338,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
                       <div key={s.id} role="group" aria-label={`${label}, left and right`} className="border-t py-1 first:border-t-0">
                         <div className="flex items-center gap-2">
                           <span className="w-10">{kindButton}</span>
-                          <span className="flex-1 text-[12px] text-muted-foreground">Left / right · tick each side you did</span>
+                          <span className="flex-1 text-[12px] text-muted-foreground">Tick each side done</span>
                           <button onClick={() => patchItem(e.id, (x) => ({ ...x, sets: x.sets.map((y) => (y.id === s.id ? copyLeftToRight(y, e.exercise.load_type) : y)) }))}
                             aria-label={`${label}: copy left values to right`} className="flex h-9 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium text-muted-foreground hover:bg-muted">
                             <Copy className="size-3.5" /> L → R

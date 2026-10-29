@@ -345,9 +345,12 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     if (!removed) return;
     updateItem(item.id, (i) => ({ ...i, sets: removeSet(i.sets, setId).sets }));
     queueRef.current?.enqueue({ table: "set_logs", id: setId, kind: "delete" });
-    const left = sets.filter((s) => s.kind === "working").length;
-    toast(meaning === "planned" ? `Set removed. The plan still has ${plannedSets(item.prescribed, item.sets)} sets, so this one counts as not done.` : "Set removed", {
-      description: meaning === "planned" ? `${left} set${left === 1 ? "" : "s"} left to log for ${item.exercise.name}.` : undefined,
+    const planned = plannedSets(item.prescribed, item.sets);
+    const done = doneWorkingSets(sets.map(toLoggedSet));
+    toast(meaning === "planned" ? "Planned set removed" : "Extra set removed", {
+      description: meaning === "planned"
+        ? `${item.exercise.name}: ${done} of ${planned} planned sets done. The plan is unchanged, so the removed set counts as not done.`
+        : undefined,
       duration: 8000,
       action: { label: "Undo", onClick: () => onUndoRemove(item.id, removed) },
     });
@@ -545,13 +548,13 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
           </Link>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-semibold leading-tight tracking-tight">{initialSession.name}</p>
-            <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground tabular">
+            <p className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground tabular">
               {backdated ? <span>Logging for {format(startedAt, "EEE d MMM")}</span> : <span suppressHydrationWarning>{formatDuration(elapsed)}</span>}
-              <span>· {counts.plannedDone}/{counts.planned} sets</span>
+              {counts.planned > 0 && <span>· {counts.plannedDone}/{counts.planned}<span className="max-[359px]:sr-only"> sets</span></span>}
               <span aria-live="polite" className="flex items-center gap-1">
                 ·{" "}
-                {sync.status === "saving" ? (<><Loader2 className="size-3 animate-spin" /> Saving</>)
-                  : sync.pending === 0 ? (<><Cloud className="size-3" /> Saved</>)
+                {sync.status === "saving" ? (<><Loader2 className="size-3 animate-spin" /> <span className="max-[359px]:sr-only">Saving</span></>)
+                  : sync.pending === 0 ? (<><Cloud className="size-3" /> <span className="max-[359px]:sr-only">Saved</span></>)
                   : sync.local === "device" ? (<span className="flex items-center gap-1 text-negative"><CloudOff className="size-3" /> Saved on device · retrying</span>)
                   : (<span className="flex items-center gap-1 text-negative"><CloudOff className="size-3" /> Not saved yet · keep page open</span>)}
               </span>

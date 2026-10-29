@@ -40,6 +40,7 @@ Sessions reference templates with `on delete set null`; they never depend on the
 | `body_measurements` | Dated body metrics | one row per user per day |
 | `personal_records` | Derived PRs | recomputed from history after a workout or an edit; can always be rebuilt |
 | `dismissed_recommendations` | Dismissed suggestions/insights | keyed by rule + evidence session, so a dismissal expires when new evidence appears |
+| `attachments` | Cable attachments (migration 011) | private per user; starter list seeded once (`profiles.attachments_seeded_at`); `archived_at` when history uses one that was removed |
 
 ## Read model and RPCs
 
@@ -53,6 +54,16 @@ Sessions reference templates with `on delete set null`; they never depend on the
 - `add_catalog_exercises(slugs)`: copies catalog entries into the library; skips entries already linked or whose name/alias matches an existing exercise (archived included). Never touches programs.
 - `import_exercises(rows)`: inserts previewed CSV rows in one transaction; rows matching an existing name are skipped, never overwritten.
 - `exercise_name_key(name)`: duplicate-detection key (case, punctuation and simple plurals ignored), mirrored by `nameKey()` in `src/lib/catalog/names.ts`.
+
+## Left/right and attachments (migration 011)
+
+- A planned set is always **one** `set_logs` row. With `sided = true` the row's own `weight_kg`/`reps`/`rir` are null and `left_*`/`right_*` hold each side's load, reps, RIR and completion. `completed` means at least one side was performed (a check constraint enforces it). Finishing clears a side that wasn't performed; it is stored as unknown, never as zero.
+- Old rows stay `sided = false`. "Per side" and "per dumbbell" weights logged with one value are never reinterpreted as independent sides.
+- `exercises.track_sides` and `default_attachment_*` are copied into each new workout (`session_exercises.track_sides`, `attachment_*`). Sets that already hold data keep their mode when the workout's mode is switched.
+- `session_exercises.attachment_state`: NULL = not recorded, `none` = no attachment, `attachment` = `attachment_id` plus `attachment_name`, a snapshot the server takes when the attachment is chosen. Renames never rewrite past workouts.
+- `personal_records.side` keeps left and right records apart.
+- Counting, volume, comparison and progression rules: `src/lib/domain/sides.ts`. In short: a pair is one set (½ when one side is done), volume is each side's own load × reps added up, each side is compared with the same side, and a shared load increase needs both sides to earn it. Sessions with a different known attachment aren't progression evidence; "not recorded" is treated as unknown, not as different.
+- RPCs: `ensure_starter_attachments()`, `remove_attachment(id)` (deletes when unused, archives when history uses it).
 
 ## Weighted bodyweight movements
 
