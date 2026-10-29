@@ -10,6 +10,8 @@ import { Segmented } from "@/components/ui/segmented";
 import { WEIGHT_ENTRY_SHORT } from "@/lib/catalog/conventions";
 import { MUSCLE_LABELS } from "@/lib/domain/analytics";
 import type { ExerciseRow } from "@/lib/data/types";
+import { ExerciseIcon } from "@/components/ui/category";
+import { exerciseCategory } from "@/lib/category";
 import { ExerciseFormButton } from "./exercise-form";
 
 const CAT_LABEL: Record<string, string> = { compound: "Compound", isolation: "Isolation", bodyweight: "Bodyweight", weighted_bodyweight: "Weighted BW", skill: "Skill" };
@@ -55,11 +57,12 @@ export function ExerciseSearch({ exercises, initialQuery = "", libraryEmpty = fa
           <Segmented value={cat} onChange={setCat} options={[{ value: "all", label: "All" }, ...Object.entries(CAT_LABEL).map(([value, label]) => ({ value, label }))]} />
         </div>
       </div>
-      <div className="divide-y overflow-hidden rounded-lg border bg-card">
+      <div className="divide-y overflow-hidden rounded-lg border bg-card shadow-card">
         {list.map((e) => (
-          <Link key={e.id} href={`/exercises/${e.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/60">
+          <Link key={e.id} href={`/exercises/${e.id}`} className="flex min-h-[64px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/60">
+            <ExerciseIcon category={exerciseCategory(e.primary_muscles)} equipment={e.equipment} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[15px] font-medium">{e.name}</p>
+              <p className="truncate text-[15px] font-semibold tracking-tight">{e.name}</p>
               <p className="truncate text-[13px] text-muted-foreground">
                 {e.primary_muscles.map((m) => MUSCLE_LABELS[m] ?? m).join(", ") || "—"} · {e.equipment} · {WEIGHT_ENTRY_SHORT[e.weight_convention] ?? e.weight_convention}
               </p>

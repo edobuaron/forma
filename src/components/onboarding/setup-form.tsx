@@ -31,7 +31,7 @@ export function SetupForm({ initialName, initialUnit, hasStarter }: { initialNam
   return (
     <div className="space-y-7">
       <div>
-        <h1 className="text-[26px] font-semibold tracking-[-0.02em]">Welcome to Forma</h1>
+        <h1 className="text-[32px] font-bold leading-tight tracking-[-0.035em]">Welcome to Forma</h1>
         <p className="mt-1.5 text-[15px] text-muted-foreground">Two quick, optional questions. You can change both later in Settings.</p>
       </div>
 
@@ -46,8 +46,8 @@ export function SetupForm({ initialName, initialUnit, hasStarter }: { initialNam
       </div>
 
       {hasStarter && (
-        <div className="rounded-lg border p-4 text-[13.5px] leading-relaxed text-muted-foreground">
-          <p className="font-medium text-foreground">Your starter program is ready</p>
+        <div className="rounded-lg border border-positive/30 bg-positive-soft p-4 text-[13.5px] leading-relaxed text-muted-foreground">
+          <p className="font-semibold text-foreground">Your starter program is ready</p>
           <p className="mt-1">
             We&apos;ve added your own copy of a generic 4-day program (Push, Pull, Lower, Upper + Skill). It&apos;s an example,
             not advice tailored to you, and no weights are preset. Edit it, create other programs, or archive it under Programs.

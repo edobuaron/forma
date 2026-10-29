@@ -134,7 +134,7 @@ export function ImportExercises({ existing }: { existing: ExistingExercise[] }) 
                     onRename={(name) => setPreview((p) => p && { ...p, rows: renameRow(p.rows, r.line, name, existing, CATALOG) })} />
                 ))}
               </div>
-              <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+72px)] flex items-center justify-between gap-3 rounded-lg border bg-card p-3 shadow-card md:bottom-4">
+              <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+78px)] flex items-center justify-between gap-3 rounded-lg border bg-card p-3 shadow-card md:bottom-4">
                 <span className="text-[13px] text-muted-foreground">Existing exercises are never changed.</span>
                 <Button variant="primary" disabled={busy || toImport.length === 0} onClick={save}>
                   {busy && <Loader2 className="animate-spin" />} Import {toImport.length} exercise{toImport.length === 1 ? "" : "s"}

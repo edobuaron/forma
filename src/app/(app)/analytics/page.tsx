@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { BarChart3 } from "lucide-react";
 import { Suspense } from "react";
 import { Bars, HBarList, TrendLine } from "@/components/charts/charts";
 import { ExerciseSelect, TimeframeControl } from "@/components/charts/controls";
@@ -28,7 +29,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const working = rows.filter(isWorkingRow);
 
   if (sessionsAll.length === 0) {
-    return (<><PageHeader title="Progress" /><EmptyState title="Nothing to analyse yet">Charts are built only from workouts you log — no placeholder data. Finish your first workout to see them.</EmptyState></>);
+    return (<><PageHeader title="Progress" /><EmptyState icon={<BarChart3 />} title="Nothing to analyse yet">Charts are built only from workouts you log — no placeholder data. Finish your first workout to see them.</EmptyState></>);
   }
 
   // Exercise frequency (sessions per exercise in timeframe)
@@ -89,7 +90,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         {selEx && (
           <Card>
             <CardHeader className="flex-col sm:flex-row sm:items-center">
-              <CardTitle>Exercise progress</CardTitle>
+              <CardTitle className="text-[17px]">Exercise progress</CardTitle>
               <Suspense><ExerciseSelect value={selEx.id} options={[...freq.map((f) => ({ id: f.id, name: f.name })), ...exercises.filter((e) => !grouped.has(e.id) && !e.archived_at).map((e) => ({ id: e.id, name: `${e.name} (no data)` }))]} /></Suspense>
             </CardHeader>
             <CardContent>
@@ -101,26 +102,26 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle>Weekly volume</CardTitle><span className="text-[12px] text-muted-foreground">load × reps, external load</span></CardHeader>
+            <CardHeader><div><CardTitle>Weekly volume</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">Load × reps, external load, {unit}</p></div></CardHeader>
             <CardContent><Bars height={200} suffix={` ${unit}`} data={weeks.map((w) => ({ x: wkLabel(w), y: Math.round(kgToDisplay(vol.get(w) ?? 0, unit)), title: `Week of ${wkLabel(w)}`, detail: `${sets.get(w) ?? 0} working sets` }))} /></CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle>Workouts per week</CardTitle>{avgPerWeek != null && <span className="text-[12px] text-muted-foreground tabular">{avgPerWeek.toFixed(1)} per week on average</span>}</CardHeader>
-            <CardContent><Bars height={200} suffix=" workouts" data={weeks.map((w) => ({ x: wkLabel(w), y: perWeek.get(w) ?? 0, title: `Week of ${wkLabel(w)}` }))} /></CardContent>
+            <CardHeader><div><CardTitle>Workouts per week</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">Completed workouts</p></div>{avgPerWeek != null && <span className="text-right"><span className="num block text-[20px] leading-tight text-positive">{avgPerWeek.toFixed(1)}</span><span className="text-[12px] text-muted-foreground">avg per week</span></span>}</CardHeader>
+            <CardContent><Bars height={200} color="var(--positive)" suffix=" workouts" data={weeks.map((w) => ({ x: wkLabel(w), y: perWeek.get(w) ?? 0, title: `Week of ${wkLabel(w)}` }))} /></CardContent>
           </Card>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle>Working sets per muscle · weekly average</CardTitle></CardHeader>
+            <CardHeader><div><CardTitle>Working sets per muscle</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">Weekly average, sets</p></div></CardHeader>
             <CardContent>
               <HBarList items={muscleAvg} />
               <p className="mt-3 text-[11.5px] text-muted-foreground">Primary muscles count as 1 set, secondary as 0.5. Leg work is maintenance by design.</p>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle>Exercise frequency</CardTitle><span className="text-[12px] text-muted-foreground">sessions</span></CardHeader>
-            <CardContent><HBarList items={freq.slice(0, 12).map((f) => ({ label: f.name, value: f.n }))} /></CardContent>
+            <CardHeader><div><CardTitle>Exercise frequency</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">Sessions in this period</p></div></CardHeader>
+            <CardContent><HBarList color="var(--positive)" items={freq.slice(0, 12).map((f) => ({ label: f.name, value: f.n }))} /></CardContent>
           </Card>
         </div>
 
@@ -135,7 +136,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                 const assisted = e.load_type === "assisted";
                 return (
                   <div key={e.id}>
-                    <p className="mb-1 text-[14px] font-medium">{e.name}</p>
+                    <p className="mb-0.5 text-[15px] font-semibold tracking-tight">{e.name}</p>
                     <p className="mb-2 text-[12px] text-muted-foreground">{added ? "Heaviest added (external) load per session — not total system load" : assisted ? "Assistance per session (lower is harder)" : "Best reps per session"}</p>
                     <TrendLine height={160} integer={!added && !assisted}
                       suffix={added || assisted ? ` ${unit}` : " reps"}
@@ -149,19 +150,19 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
-            <CardHeader><CardTitle>Completed workouts · last 12 months</CardTitle></CardHeader>
+            <CardHeader><div><CardTitle>Completed workouts</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">Per month, last 12 months</p></div></CardHeader>
             <CardContent>
-              <Bars height={180} highlightLast suffix=" workouts" data={months.map((m) => ({ x: format(new Date(`${m}-01T00:00:00`), "MMM"), y: perMonth.get(m) ?? 0, title: format(new Date(`${m}-01T00:00:00`), "MMMM yyyy") }))} />
+              <Bars height={180} highlightLast color="var(--positive)" suffix=" workouts" data={months.map((m) => ({ x: format(new Date(`${m}-01T00:00:00`), "MMM"), y: perMonth.get(m) ?? 0, title: format(new Date(`${m}-01T00:00:00`), "MMMM yyyy") }))} />
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t pt-3 text-[13px] tabular">
-                {[...perYear.entries()].sort().reverse().map(([y, n]) => <span key={y}><span className="text-muted-foreground">{y}</span> <span className="font-medium">{n}</span></span>)}
+                {[...perYear.entries()].sort().reverse().map(([y, n]) => <span key={y}><span className="text-muted-foreground">{y}</span> <span className="font-bold">{n}</span></span>)}
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle>Bodyweight</CardTitle></CardHeader>
+            <CardHeader><div><CardTitle>Bodyweight</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">{unit}</p></div></CardHeader>
             <CardContent>
               {bodyweight.length >= 2 ? (
-                <TrendLine height={180} suffix={` ${unit}`} data={bodyweight.map((m) => ({ x: format(new Date(m.measured_on), "d MMM"), y: kgToDisplay(Number(m.bodyweight_kg), unit) }))} />
+                <TrendLine height={180} color="var(--record)" suffix={` ${unit}`} data={bodyweight.map((m) => ({ x: format(new Date(m.measured_on), "d MMM"), y: kgToDisplay(Number(m.bodyweight_kg), unit) }))} />
               ) : (
                 <p className="py-12 text-center text-[13px] text-muted-foreground">Log bodyweight in Body to see it here. It also gives context to pull-up performance.</p>
               )}

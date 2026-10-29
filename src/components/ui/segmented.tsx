@@ -5,7 +5,7 @@ export function Segmented<T extends string>({
   value, onChange, options, className, size = "md",
 }: { value: T; onChange: (v: T) => void; options: { value: T; label: React.ReactNode }[]; className?: string; size?: "sm" | "md" }) {
   return (
-    <div role="tablist" className={cn("inline-flex rounded-md bg-subtle p-0.5", className)}>
+    <div role="tablist" className={cn("inline-flex rounded-md border bg-muted p-0.5", className)}>
       {options.map((o) => (
         <button
           type="button"
@@ -14,9 +14,9 @@ export function Segmented<T extends string>({
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "whitespace-nowrap rounded-[10px] px-3 font-medium text-muted-foreground transition-all",
+            "whitespace-nowrap rounded-[10px] px-3 font-semibold text-muted-foreground transition-colors hover:text-foreground",
             size === "sm" ? "h-7 text-[12px]" : "h-8 text-[13px]",
-            value === o.value && "bg-card text-foreground shadow-sm",
+            value === o.value && "bg-primary text-primary-foreground shadow-sm hover:text-primary-foreground",
           )}
         >
           {o.label}

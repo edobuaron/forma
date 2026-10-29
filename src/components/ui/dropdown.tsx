@@ -12,7 +12,7 @@ export function MenuContent({ className, ...p }: React.ComponentProps<typeof M.C
       <M.Content
         sideOffset={6}
         align="end"
-        className={cn("z-50 min-w-[200px] rounded-md border bg-card p-1 shadow-lg data-[state=open]:animate-in", className)}
+        className={cn("z-50 min-w-[200px] rounded-md border bg-card p-1 shadow-raised data-[state=open]:animate-in", className)}
         {...p}
       />
     </M.Portal>
@@ -24,7 +24,7 @@ export function MenuItem({ className, destructive, ...p }: React.ComponentProps<
     <M.Item
       className={cn(
         "flex h-10 cursor-default select-none items-center gap-2.5 rounded-sm px-2.5 text-[14px] outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-muted [&_svg]:size-4 [&_svg]:text-muted-foreground",
-        destructive && "text-negative [&_svg]:text-negative",
+        destructive && "text-destructive [&_svg]:text-destructive",
         className,
       )}
       {...p}

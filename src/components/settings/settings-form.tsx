@@ -19,15 +19,15 @@ import { createClient } from "@/lib/supabase/client";
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="mb-2 px-1 text-[13px] font-medium text-muted-foreground">{title}</h2>
-      <div className="divide-y overflow-hidden rounded-lg border bg-card">{children}</div>
+      <h2 className="mb-2.5 px-1 text-[15px] font-semibold tracking-tight">{title}</h2>
+      <div className="divide-y overflow-hidden rounded-lg border bg-card shadow-card">{children}</div>
     </section>
   );
 }
 function Row({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) {
   return (
     <div className="flex min-h-14 items-center justify-between gap-4 px-4 py-3">
-      <div className="min-w-0"><p className="text-[15px]">{label}</p>{sub && <p className="text-[12.5px] text-muted-foreground">{sub}</p>}</div>
+      <div className="min-w-0"><p className="text-[15px] font-medium">{label}</p>{sub && <p className="mt-0.5 text-[12.5px] leading-snug text-muted-foreground">{sub}</p>}</div>
       <div className="shrink-0">{children}</div>
     </div>
   );
@@ -104,12 +104,12 @@ export function SettingsForm({ profile, email }: { profile: ProfileRow; email?: 
         <Row label="Conservative progression" sub="Require a rep in reserve before suggesting more load">
           <Switch aria-label="Conservative progression" checked={p.progression_conservative} onCheckedChange={(c) => save({ progression_conservative: c })} />
         </Row>
-        <Link href="/exercises" className="flex min-h-14 items-center justify-between px-4 hover:bg-muted/60">
-          <span><span className="block text-[15px]">Equipment increments & exercise names</span><span className="block text-[12.5px] text-muted-foreground">Edit per exercise in the library</span></span>
+        <Link href="/exercises" className="flex min-h-14 items-center justify-between px-4 transition-colors hover:bg-muted/60">
+          <span><span className="block text-[15px] font-medium">Equipment increments & exercise names</span><span className="block text-[12.5px] text-muted-foreground">Edit per exercise in the library</span></span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
-        <Link href="/programs" className="flex min-h-14 items-center justify-between px-4 hover:bg-muted/60">
-          <span><span className="block text-[15px]">Workout program</span><span className="block text-[12.5px] text-muted-foreground">Edit workouts, exercises and prescriptions</span></span>
+        <Link href="/programs" className="flex min-h-14 items-center justify-between px-4 transition-colors hover:bg-muted/60">
+          <span><span className="block text-[15px] font-medium">Workout program</span><span className="block text-[12.5px] text-muted-foreground">Edit workouts, exercises and prescriptions</span></span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
       </Section>

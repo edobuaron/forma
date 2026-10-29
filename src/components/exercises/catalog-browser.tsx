@@ -65,7 +65,7 @@ export function CatalogBrowser({ owned, initialQuery = "" }: { owned: Owned; ini
   const trimmed = q.trim();
   return (
     <div className="space-y-4 pb-24">
-      <p className="rounded-md bg-muted px-3 py-2.5 text-[13px] text-muted-foreground">
+      <p className="rounded-md border-l-[3px] border-accent bg-accent-soft px-3 py-2.5 text-[13px] leading-relaxed text-muted-foreground">
         Adding exercises puts a copy in your library that you can edit. Your programs and past workouts don&apos;t change; add exercises to a workout under Programs.
       </p>
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
@@ -82,7 +82,7 @@ export function CatalogBrowser({ owned, initialQuery = "" }: { owned: Owned; ini
         <Segmented value={group} onChange={setGroup} options={[{ value: "all" as const, label: "All" }, ...(Object.keys(GROUP_LABELS) as CatalogGroup[]).map((g) => ({ value: g, label: GROUP_LABELS[g] }))]} />
       </div>
 
-      <div className="divide-y overflow-hidden rounded-lg border bg-card">
+      <div className="divide-y overflow-hidden rounded-lg border bg-card shadow-card">
         {list.map((c) => {
           const have = owned[c.slug];
           const on = picked.has(c.slug);
@@ -90,9 +90,9 @@ export function CatalogBrowser({ owned, initialQuery = "" }: { owned: Owned; ini
           if (have) {
             return (
               <Link key={c.slug} href={`/exercises/${have.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/60">
-                <span className="grid size-5 shrink-0 place-items-center text-muted-foreground"><Check className="size-4" /></span>
+                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-positive-soft text-positive"><Check className="size-3.5" strokeWidth={3} /></span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-medium">{c.name}</span>
+                  <span className="block truncate text-[15px] font-semibold tracking-tight">{c.name}</span>
                   <span className="block truncate text-[13px] text-muted-foreground">{detail}</span>
                 </span>
                 <Badge tone="outline">{have.archived ? "Archived in library" : have.name === c.name ? "In library" : `In library as ${have.name}`}</Badge>
@@ -101,12 +101,12 @@ export function CatalogBrowser({ owned, initialQuery = "" }: { owned: Owned; ini
           }
           return (
             <button key={c.slug} type="button" role="checkbox" aria-checked={on} onClick={() => toggle(c.slug)}
-              className={cn("flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/60", on && "bg-accent-soft/50")}>
-              <span className={cn("grid size-5 shrink-0 place-items-center rounded border", on && "border-accent bg-accent text-accent-foreground")}>
-                {on && <Check className="size-3" strokeWidth={3} />}
+              className={cn("flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60", on && "bg-accent-soft hover:bg-accent-soft")}>
+              <span className={cn("grid size-6 shrink-0 place-items-center rounded-[7px] border-2 border-input transition-colors", on && "border-primary bg-primary text-primary-foreground")}>
+                {on && <Check className="size-3.5 animate-pop" strokeWidth={3} />}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-medium">{c.name}</span>
+                <span className="flex items-center gap-2 truncate text-[15px] font-semibold tracking-tight">{c.name}</span>
                 <span className="block truncate text-[13px] text-muted-foreground">{detail}</span>
                 {c.instructions && <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground/80">{c.instructions}</span>}
               </span>
@@ -124,9 +124,9 @@ export function CatalogBrowser({ owned, initialQuery = "" }: { owned: Owned; ini
       </div>
 
       {picked.size > 0 && (
-        <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+72px)] z-30 flex justify-center px-4 md:bottom-6">
-          <div className="flex w-full max-w-md items-center justify-between gap-3 rounded-lg border bg-card p-3 shadow-card">
-            <button type="button" className="text-[13px] text-muted-foreground hover:text-foreground" onClick={() => setPicked(new Set())}>Clear</button>
+        <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+78px)] z-30 flex justify-center px-4 md:bottom-6">
+          <div className="flex w-full max-w-md items-center justify-between gap-3 rounded-lg border bg-card p-3 shadow-raised animate-in">
+            <button type="button" className="h-10 rounded-md px-3 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => setPicked(new Set())}>Clear</button>
             <Button variant="primary" disabled={busy} onClick={add}>
               {busy ? <Loader2 className="animate-spin" /> : <Plus />} Add {picked.size} to library
             </Button>

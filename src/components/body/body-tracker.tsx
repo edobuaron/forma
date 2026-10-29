@@ -90,11 +90,11 @@ export function BodyTracker({ rows, unit, profileId }: { rows: BodyMeasurementRo
         <>
           <Card>
             <CardHeader className="flex-col sm:flex-row sm:items-center">
-              <CardTitle>Trend</CardTitle>
+              <div><CardTitle>Trend</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">{FIELDS.find((f) => f.key === metric)!.label}, {metric === "bodyweight_kg" ? unit : "cm"}</p></div>
               <div className="-mx-1 max-w-full overflow-x-auto px-1"><Segmented size="sm" value={metric} onChange={setMetric} options={FIELDS.map((f) => ({ value: f.key, label: f.label }))} /></div>
             </CardHeader>
             <CardContent>
-              {series.length >= 2 ? <TrendLine data={series} suffix={` ${metric === "bodyweight_kg" ? unit : "cm"}`} height={220} />
+              {series.length >= 2 ? <TrendLine data={series} suffix={` ${metric === "bodyweight_kg" ? unit : "cm"}`} height={220} color="var(--record)" />
                 : <p className="py-12 text-center text-[13px] text-muted-foreground">Two or more entries needed for a trend.</p>}
               {latest && first && latest !== first && latest[metric] != null && first[metric] != null && (
                 <p className="mt-2 text-[12.5px] text-muted-foreground tabular">
@@ -111,9 +111,9 @@ export function BodyTracker({ rows, unit, profileId }: { rows: BodyMeasurementRo
                 <tbody className="divide-y">
                   {rows.map((r) => (
                     <tr key={r.id}>
-                      <td className="py-2">{format(new Date(r.measured_on), "d MMM yyyy")}</td>
+                      <td className="py-2.5 font-medium">{format(new Date(r.measured_on), "d MMM yyyy")}</td>
                       {FIELDS.map((f) => <td key={f.key} className="py-2 text-right">{r[f.key] == null ? "—" : f.unit === "weight" ? kgToDisplay(Number(r[f.key]), unit) : Number(r[f.key])}</td>)}
-                      <td className="py-2 text-right"><button aria-label="Delete" onClick={async () => { if (confirm("Delete this entry?")) { await deleteMeasurement(createClient(), r.id); router.refresh(); } }} className="rounded-full p-1 text-muted-foreground hover:bg-muted"><Trash2 className="size-3.5" /></button></td>
+                      <td className="py-2 text-right"><button aria-label="Delete" onClick={async () => { if (confirm("Delete this entry?")) { await deleteMeasurement(createClient(), r.id); router.refresh(); } }} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button></td>
                     </tr>
                   ))}
                 </tbody>

@@ -1,5 +1,6 @@
 "use client";
 import { format } from "date-fns";
+import { Check } from "lucide-react";
 import { useState } from "react";
 import { DaySheet, dayFromKey } from "@/components/workout/day-sheet";
 import type { DayWorkout, StartTemplate } from "@/lib/data/queries";
@@ -33,16 +34,16 @@ export function MonthCalendar({ days, templates }: { days: CalendarDay[]; templa
               onClick={() => setOpen(d)}
               aria-label={`${format(dt, "EEEE d MMMM")}${done ? `, ${d.workouts.map((w) => w.name).join(", ")}` : ""}`}
               className={cn(
-                "relative flex aspect-square flex-col items-center justify-center rounded-md text-[13px] tabular transition-colors md:aspect-[1.5]",
+                "relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-md text-[14px] tabular transition-colors md:aspect-[1.5]",
                 !d.inMonth && "opacity-35",
-                done ? "bg-accent-soft font-semibold text-accent hover:bg-accent/15" : "text-muted-foreground enabled:hover:bg-muted",
+                done ? "bg-positive-soft font-bold text-foreground hover:bg-positive/20" : "text-muted-foreground enabled:hover:bg-muted",
                 d.isFuture && "text-muted-foreground/50",
-                d.isToday && "ring-2 ring-accent/60",
+                d.isToday && "ring-2 ring-inset ring-accent",
               )}
             >
               <span>{dt.getDate()}</span>
-              <span className="hidden max-w-full truncate px-1 text-[10.5px] font-normal md:block">{d.workouts.map((w) => w.name).join(" + ")}</span>
-              {done && <span className="absolute bottom-1.5 size-1 rounded-full bg-accent md:hidden" />}
+              <span className="hidden max-w-full truncate px-1 text-[11px] font-medium text-muted-foreground md:block">{d.workouts.map((w) => w.name).join(" + ")}</span>
+              {done && <Check aria-hidden className="size-3 text-positive md:absolute md:right-1.5 md:top-1.5 md:size-3.5" strokeWidth={3.5} />}
             </button>
           );
         })}

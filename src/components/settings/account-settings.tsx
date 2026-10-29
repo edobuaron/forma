@@ -18,9 +18,9 @@ export function AccountSettings({ email }: { email?: string }) {
     } catch { setError("Couldn't sign out other devices. Please try again."); }
     finally { setBusy(false); }
   }
-  return <section className="space-y-2"><h2 className="px-1 text-[13px] font-medium text-muted-foreground">Account & security</h2><div className="divide-y rounded-lg border bg-card">
-    <div className="px-4 py-3"><p className="text-[15px]">Signed in as</p><p className="break-all text-sm text-muted-foreground">{email ?? "Email unavailable"}</p></div>
-    <details className="px-4 py-3"><summary className="flex min-h-11 cursor-pointer items-center text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Change password</summary><div className="py-3"><PasswordForm /></div></details>
-    <div className="space-y-2 px-4 py-3"><p className="text-[15px]">Other devices</p><p className="text-sm text-muted-foreground">Revoke other sign-ins while keeping this device connected.</p><Button type="button" variant="outline" className="min-h-11" disabled={busy} onClick={signOutOthers}>{busy ? "Signing out…" : "Sign out other devices"}</Button>{notice && <p role="status" className="text-sm">{notice}</p>}{error && <p role="alert" className="text-sm text-negative">{error}</p>}</div>
+  return <section className="space-y-2"><h2 className="mb-0.5 px-1 text-[15px] font-semibold tracking-tight">Account & security</h2><div className="divide-y rounded-lg border bg-card shadow-card">
+    <div className="px-4 py-3"><p className="text-[15px] font-medium">Signed in as</p><p className="break-all text-sm text-muted-foreground">{email ?? "Email unavailable"}</p></div>
+    <details className="px-4 py-3"><summary className="flex min-h-11 cursor-pointer items-center text-[15px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Change password</summary><div className="py-3"><PasswordForm /></div></details>
+    <div className="space-y-2 px-4 py-3"><p className="text-[15px] font-medium">Other devices</p><p className="text-sm text-muted-foreground">Revoke other sign-ins while keeping this device connected.</p><Button type="button" variant="outline" className="min-h-11" disabled={busy} onClick={signOutOthers}>{busy ? "Signing out…" : "Sign out other devices"}</Button>{notice && <p role="status" className="text-sm">{notice}</p>}{error && <p role="alert" className="text-sm text-negative">{error}</p>}</div>
   </div></section>;
 }

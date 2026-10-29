@@ -13,12 +13,12 @@ export default function MorePage() {
   return (
     <>
       <PageHeader title="More" />
-      <div className="divide-y overflow-hidden rounded-lg border bg-card">
+      <div className="divide-y overflow-hidden rounded-lg border bg-card shadow-card">
         {ITEMS.map((i) => (
-          <Link key={i.href} href={i.href} className="flex items-center gap-4 px-4 py-3.5 active:bg-muted">
-            <span className="grid size-9 place-items-center rounded-md bg-subtle"><i.icon className="size-[18px]" strokeWidth={1.8} /></span>
+          <Link key={i.href} href={i.href} className="flex min-h-[68px] items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/60 active:bg-muted">
+            <span className="grid size-10 place-items-center rounded-md bg-accent-soft text-accent"><i.icon className="size-[19px]" strokeWidth={2} /></span>
             <span className="flex-1">
-              <span className="block text-[15px] font-medium">{i.label}</span>
+              <span className="block text-[16px] font-semibold tracking-tight">{i.label}</span>
               <span className="block text-[13px] text-muted-foreground">{i.sub}</span>
             </span>
             <ChevronRight className="size-4 text-muted-foreground" />

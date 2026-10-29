@@ -1,11 +1,13 @@
 import { format } from "date-fns";
-import { Award, ChevronLeft, Pencil } from "lucide-react";
+import { Award, ChevronLeft, LineChart, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExerciseFormButton } from "@/components/exercises/exercise-form";
 import { ExerciseProgressChart } from "@/components/exercises/progress-chart";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CategoryTag, ExerciseIcon } from "@/components/ui/category";
+import { exerciseCategory } from "@/lib/category";
 import { EmptyState, Stat } from "@/components/ui/misc";
 import { formatPerformance } from "@/components/workout/format";
 import { bestLoadForReps, bestRepsByLoad, MUSCLE_LABELS, sessionPoints } from "@/lib/domain/analytics";
@@ -60,8 +62,11 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
     <div>
       <Link href="/exercises" className="mb-4 inline-flex items-center gap-1 text-[13px] font-medium text-muted-foreground hover:text-foreground"><ChevronLeft className="size-4" /> Exercises</Link>
       <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[28px] font-semibold tracking-[-0.02em] md:text-[32px]">{ex.name}</h1>
+        <div className="flex min-w-0 items-start gap-4">
+          <ExerciseIcon category={exerciseCategory(ex.primary_muscles)} equipment={ex.equipment} className="mt-1 hidden size-12 rounded-lg sm:grid [&_svg]:size-6" />
+          <div className="min-w-0">
+          <CategoryTag category={exerciseCategory(ex.primary_muscles)} />
+          <h1 className="mt-0.5 text-[30px] font-bold leading-[1.1] tracking-[-0.03em] md:text-[36px]">{ex.name}</h1>
           <p className="mt-1 text-[14px] text-muted-foreground">
             {ex.primary_muscles.map((m) => MUSCLE_LABELS[m] ?? m).join(", ")}
             {ex.secondary_muscles.length > 0 && <span className="text-muted-foreground/70"> · {ex.secondary_muscles.map((m) => MUSCLE_LABELS[m] ?? m).join(", ")}</span>}
@@ -73,6 +78,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
             <Badge tone="outline">+{formatWeight(Number(ex.increment_kg), unit)} steps{ex.increment_is_generic ? " (generic)" : ""}</Badge>
             {ex.archived_at && <Badge tone="negative">Archived</Badge>}
           </div>
+          </div>
         </div>
         <ExerciseFormButton exercise={ex} variant="outline" size="sm"><Pencil /> Edit</ExerciseFormButton>
       </div>
@@ -83,12 +89,13 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
       </p>
 
       {history.length === 0 ? (
-        <EmptyState title="No sessions logged yet">Progress, records and recommendations appear once you log this exercise.</EmptyState>
+        <EmptyState icon={<LineChart />} title="No sessions logged yet">Progress, records and recommendations appear once you log this exercise.</EmptyState>
       ) : (
         <div className="space-y-4">
-          <Card className="p-5">
+          <Card className="relative overflow-hidden p-5 pl-6">
+            <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />
             <p className="text-[13px] font-medium text-muted-foreground">Recommendation{usedIn[0] ? ` · ${rx.sets} × ${rx.repMin}–${rx.repMax} in ${usedIn[0].t.name}` : ""}</p>
-            <p className="mt-1 text-[17px] font-semibold tracking-tight text-accent">{headline(rec, cfg, unit)}</p>
+            <p className="mt-1 text-[19px] font-bold tracking-[-0.02em] text-accent">{headline(rec, cfg, unit)}</p>
             <ul className="mt-2 space-y-0.5 text-[13px] text-muted-foreground">{rec.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
             {insights.map((i) => <p key={i.key} className="mt-3 border-t pt-3 text-[13px]"><span className="font-medium">{i.title}.</span> <span className="text-muted-foreground">{i.detail}</span></p>)}
           </Card>
@@ -107,7 +114,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
           </div>
 
           <Card>
-            <CardHeader><CardTitle>Progress</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><LineChart className="size-4 !text-accent" /> Progress</CardTitle></CardHeader>
             <CardContent><ExerciseProgressChart points={points} e1rm={cfg.e1rmEligible} unit={unit} loadType={ex.load_type} /></CardContent>
           </Card>
 
@@ -127,7 +134,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
                 <CardContent>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[14px] tabular">
                     {repTable.map((r) => (
-                      <div key={r.loadKg} className="flex justify-between"><span className="text-muted-foreground">{ex.load_type === "weighted_bodyweight" ? (r.loadKg ? "+" + formatWeight(r.loadKg, unit) : "BW") : formatWeight(r.loadKg, unit)}</span><span className="font-medium">{r.reps}</span></div>
+                      <div key={r.loadKg} className="flex justify-between"><span className="text-muted-foreground">{ex.load_type === "weighted_bodyweight" ? (r.loadKg ? "+" + formatWeight(r.loadKg, unit) : "BW") : formatWeight(r.loadKg, unit)}</span><span className="font-semibold">{r.reps}</span></div>
                     ))}
                   </div>
                   {loadFor.length > 0 && (
@@ -145,13 +152,13 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
 
           {records.length > 0 && (
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-1.5"><Award className="size-4" /> Personal records</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Award className="size-4 !text-record" /> Personal records</CardTitle></CardHeader>
               <CardContent>
                 <ul className="divide-y">
                   {records.slice(0, 10).map((r) => (
                     <li key={r.id} className="flex items-center justify-between py-2 text-[14px]">
                       <span>{recordLabel(prLabel(r.type as PRType), r.side)} <span className="text-muted-foreground">· {format(new Date(r.achieved_at), "d MMM yyyy")}</span></span>
-                      <span className="font-medium tabular">{r.type === "best_e1rm" ? `${formatWeight(Number(r.value), unit)} est.` : r.type === "most_reps" ? `${r.reps} reps` : r.type === "least_assistance" ? `${formatWeight(Number(r.value), unit)} assist` : `${formatWeight(Number(r.load_kg), unit)} × ${r.reps}`}</span>
+                      <span className="font-bold tabular text-record">{r.type === "best_e1rm" ? `${formatWeight(Number(r.value), unit)} est.` : r.type === "most_reps" ? `${r.reps} reps` : r.type === "least_assistance" ? `${formatWeight(Number(r.value), unit)} assist` : `${formatWeight(Number(r.load_kg), unit)} × ${r.reps}`}</span>
                     </li>
                   ))}
                 </ul>
@@ -165,7 +172,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
               <ul className="divide-y">
                 {history.slice(0, 30).map((h) => (
                   <li key={h.sessionId}>
-                    <Link href={`/history/${h.sessionId}`} className="flex items-baseline justify-between gap-4 py-2.5 hover:opacity-80">
+                    <Link href={`/history/${h.sessionId}`} className="-mx-2 flex items-baseline justify-between gap-4 rounded-sm px-2 py-2.5 transition-colors hover:bg-muted">
                       <span className="w-24 shrink-0 text-[13px] text-muted-foreground">{format(new Date(h.date), "d MMM yyyy")}</span>
                       <span className="flex-1 text-right text-[14px] tabular">{formatPerformance(h.sets, cfg.loadType, unit, workingSets(h.sets, cfg))}{h.attachment?.state ? <span className="text-muted-foreground"> · {attachmentLabel(h.attachment)}</span> : null}</span>
                     </Link>

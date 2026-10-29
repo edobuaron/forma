@@ -76,7 +76,7 @@ export function LoginForm({ next, initialError }: { next?: string; initialError?
           />
         )}
       </div>
-      {mode === "signin" && <Link href="/auth/reset-password" className="flex min-h-11 items-center text-sm underline">Forgot password?</Link>}
+      {mode === "signin" && <Link href="/auth/reset-password" className="flex min-h-11 items-center text-sm font-medium text-accent hover:underline">Forgot password?</Link>}
       {error && <p className="text-[13px] text-negative">{error}</p>}
       {notice && <p className="text-[13px] text-positive">{notice}</p>}
       <Button type="submit" variant="primary" size="lg" className="w-full" disabled={busy}>

@@ -32,7 +32,7 @@ export default async function ExercisesPage({ searchParams }: { searchParams: Pr
     if (hit) owned[c.slug] = { id: hit.id, name: hit.name, archived: !!hit.archived_at };
   }
 
-  const tab = (active: boolean) => cn("h-8 rounded-[10px] px-3 text-[13px] font-medium leading-8 text-muted-foreground", active && "bg-card text-foreground shadow-sm");
+  const tab = (active: boolean) => cn("h-9 rounded-[10px] px-4 text-[14px] font-semibold leading-9 text-muted-foreground transition-colors hover:text-foreground", active && "bg-primary text-primary-foreground shadow-sm hover:text-primary-foreground");
   return (
     <>
       <PageHeader
@@ -45,7 +45,7 @@ export default async function ExercisesPage({ searchParams }: { searchParams: Pr
           </>
         }
       />
-      <nav className="mb-4 inline-flex rounded-md bg-subtle p-0.5" aria-label="Exercise views">
+      <nav className="mb-5 inline-flex rounded-md border bg-muted p-0.5" aria-label="Exercise views">
         <Link href="/exercises" className={tab(!catalogView)} aria-current={!catalogView ? "page" : undefined}>Your library</Link>
         <Link href="/exercises?view=catalog" className={tab(catalogView)} aria-current={catalogView ? "page" : undefined}>Browse catalog</Link>
       </nav>

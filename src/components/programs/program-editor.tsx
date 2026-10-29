@@ -17,6 +17,8 @@ import type { ProgramFull, TemplateWithExercises } from "@/lib/data/queries";
 import type { ExerciseRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
 import { cn, uuid } from "@/lib/utils";
+import { CategoryBar } from "@/components/ui/category";
+import { workoutCategory } from "@/lib/category";
 
 type TE = TemplateWithExercises["exercises"][number];
 type T = Omit<TemplateWithExercises, "exercises"> & { exercises: TE[]; _new?: boolean };
@@ -24,7 +26,7 @@ type T = Omit<TemplateWithExercises, "exercises"> & { exercises: TE[]; _new?: bo
 function NumCell({ value, onChange, label, step = 1, className }: { value: number | null; onChange: (v: number | null) => void; label: string; step?: number; className?: string }) {
   return (
     <label className={cn("flex flex-col gap-1", className)}>
-      <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="truncate whitespace-nowrap text-[11.5px] font-medium text-muted-foreground">{label}</span>
       <input
         inputMode={step < 1 ? "decimal" : "numeric"}
         value={value ?? ""}
@@ -144,7 +146,7 @@ export function ProgramEditor({ program, library, versions }: { program: Program
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-2">
           <input value={name} onChange={(e) => { setName(e.target.value); setDirty(true); }} aria-label="Program name"
-            className="w-full bg-transparent text-[26px] font-semibold tracking-[-0.02em] outline-none md:text-[30px]" />
+            className="w-full rounded-sm bg-transparent text-[26px] font-bold tracking-[-0.03em] outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-[30px] md:text-[36px]" />
           <Textarea value={description} onChange={(e) => { setDescription(e.target.value); setDirty(true); }} placeholder="Description and goals" className="min-h-[56px] text-[14px]" />
           <div className="flex items-center gap-2">
             {program.is_active ? <Badge tone="accent">Active program</Badge> : null}
@@ -166,6 +168,7 @@ export function ProgramEditor({ program, library, versions }: { program: Program
         {templates.map((t, ti) => (
           <Card key={t.id} className="p-4 md:p-5">
             <div className="mb-3 flex flex-wrap items-center gap-2">
+              <CategoryBar category={workoutCategory(t.name)} className="h-8 self-center" />
               <Input value={t.name} onChange={(e) => patchT(t.id, { name: e.target.value })} className="h-10 min-w-0 flex-1 text-[16px] font-semibold" aria-label="Workout name" />
               <Menu>
                 <MenuTrigger className="grid size-10 place-items-center rounded-full outline-none hover:bg-muted" aria-label="Workout options"><MoreHorizontal className="size-4" /></MenuTrigger>
@@ -182,14 +185,16 @@ export function ProgramEditor({ program, library, versions }: { program: Program
 
             <div className="space-y-2">
               {t.exercises.map((e, ei) => (
-                <div key={e.id} className="rounded-md border bg-muted/30 p-3">
-                  <div className="mb-2 flex items-center gap-2">
+                <div key={e.id} className="rounded-md border bg-muted/40 p-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="w-5 text-[12px] font-semibold text-muted-foreground tabular">{ei + 1}</span>
-                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{e.exercise.name}</span>
+                    <span className="min-w-[9rem] flex-1 text-[14px] font-semibold leading-snug">{e.exercise.name}</span>
+                    <span className="ml-auto flex items-center">
                     <button aria-label="Move up" disabled={ei === 0} onClick={() => moveE(t.id, ei, -1)} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-30"><ArrowUp className="size-4" /></button>
                     <button aria-label="Move down" disabled={ei === t.exercises.length - 1} onClick={() => moveE(t.id, ei, 1)} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-30"><ArrowDown className="size-4" /></button>
                     <button aria-label="Substitute exercise" onClick={() => setPicker({ templateId: t.id, replaceId: e.id })} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted"><Repeat className="size-4" /></button>
-                    <button aria-label="Remove exercise" onClick={() => { mut((ts) => ts.map((x) => (x.id === t.id ? { ...x, exercises: x.exercises.filter((y) => y.id !== e.id) } : x))); setRemovedExercises((r) => [...r, e.id]); }} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted"><Trash2 className="size-4" /></button>
+                    <button aria-label="Remove exercise" onClick={() => { mut((ts) => ts.map((x) => (x.id === t.id ? { ...x, exercises: x.exercises.filter((y) => y.id !== e.id) } : x))); setRemovedExercises((r) => [...r, e.id]); }} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>
+                    </span>
                   </div>
                   <div className="grid max-w-md grid-cols-5 gap-2 pl-7">
                     <NumCell label="Sets" value={e.sets} onChange={(v) => patchE(t.id, e.id, { sets: v ?? 1 })} />
@@ -213,7 +218,7 @@ export function ProgramEditor({ program, library, versions }: { program: Program
 
       {versions.length > 0 && (
         <div className="mt-10">
-          <h2 className="mb-2 text-[13px] font-medium text-muted-foreground">Version history</h2>
+          <h2 className="mb-2.5 text-[15px] font-semibold tracking-tight">Version history</h2>
           <ul className="divide-y overflow-hidden rounded-lg border bg-card text-[13px]">
             {versions.slice(0, 10).map((v) => (
               <li key={v.id} className="flex justify-between gap-3 px-4 py-2.5">
@@ -227,8 +232,8 @@ export function ProgramEditor({ program, library, versions }: { program: Program
       )}
 
       {dirty && (
-        <div className="pb-safe fixed inset-x-0 bottom-[58px] z-40 px-3 pb-3 md:bottom-0 md:left-60">
-          <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-xl border bg-card/95 p-2 shadow-xl backdrop-blur-xl">
+        <div className="pb-safe fixed inset-x-0 bottom-[64px] z-40 px-3 pb-3 md:bottom-0 md:left-60">
+          <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-xl border bg-card/95 p-2 shadow-raised backdrop-blur-xl animate-in">
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Describe this change (optional)" className="h-10 flex-1 border-0 bg-transparent" />
             <Button variant="ghost" onClick={() => location.reload()}>Discard</Button>
             <Button variant="primary" onClick={save} disabled={busy}>{busy && <Loader2 className="animate-spin" />} Save</Button>

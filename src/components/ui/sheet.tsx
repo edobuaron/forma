@@ -14,10 +14,10 @@ export function SheetContent({
 }: React.ComponentProps<typeof D.Content> & { title: string; description?: string }) {
   return (
     <D.Portal>
-      <D.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] data-[state=open]:animate-in" />
+      <D.Overlay className="fixed inset-0 z-50 bg-[oklch(0.12_0.03_264/0.55)] backdrop-blur-[3px] data-[state=open]:animate-in" />
       <D.Content
         className={cn(
-          "fixed z-50 flex max-h-[88dvh] flex-col border bg-card shadow-xl outline-none data-[state=open]:animate-in",
+          "fixed z-50 flex max-h-[88dvh] flex-col border bg-card shadow-raised outline-none data-[state=open]:animate-in",
           "inset-x-0 bottom-0 rounded-t-xl pb-safe",
           "sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl",
           className,
@@ -27,7 +27,7 @@ export function SheetContent({
         <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-border sm:hidden" />
         <div className="flex items-start justify-between gap-4 px-5 pb-3 pt-4">
           <div>
-            <D.Title className="text-[17px] font-semibold tracking-tight">{title}</D.Title>
+            <D.Title className="text-[18px] font-bold tracking-[-0.02em]">{title}</D.Title>
             {description ? (
               <D.Description className="mt-0.5 text-[13px] text-muted-foreground">{description}</D.Description>
             ) : (
