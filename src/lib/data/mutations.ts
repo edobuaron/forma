@@ -125,11 +125,16 @@ export async function archiveExercise(db: DB, id: string, archived: boolean) {
 }
 
 // ---------- setup & catalog (migration 009) ----------
-/** First-run setup. Safe to retry: once setup is recorded, later calls create nothing. */
-export async function completeOnboarding(db: DB, choice: "empty" | "starter", opts: { displayName?: string | null; unit?: "kg" | "lb" | null } = {}) {
+/** First-run setup: name and units only. Safe to retry; it never creates programs. */
+export async function completeOnboarding(db: DB, opts: { displayName?: string | null; unit?: "kg" | "lb" | null } = {}) {
   return ok(await db.rpc("complete_onboarding", {
-    p_choice: choice, p_display_name: opts.displayName ?? null, p_unit: opts.unit ?? null,
-  })) as { status: "set_up" | "already_set_up"; choice: string };
+    p_choice: null, p_display_name: opts.displayName ?? null, p_unit: opts.unit ?? null,
+  })) as { status: "set_up" | "already_set_up" };
+}
+
+/** Add a fresh, independent copy of the starter program. Existing programs are not changed. */
+export async function addStarterProgram(db: DB) {
+  return ok(await db.rpc("add_starter_program")) as string;
 }
 
 export interface CatalogAddResult {

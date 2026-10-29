@@ -61,7 +61,7 @@ export default async function Dashboard() {
                 <li><Link href={d.program ? `/programs/${d.program.id}` : "/programs"} className="font-medium text-accent">Create a workout</Link> in your program and add those exercises.</li>
                 <li>Come back here and tap the workout to start. Enter the weight and reps you actually do; nothing is pre-filled.</li>
               </ol>
-              <p>Or use Quick start to log an empty workout and add exercises as you go.</p>
+              <p>Or use Quick start to log an empty workout and add exercises as you go. Want the 4-day starter program? <Link href="/programs" className="font-medium text-accent">Add it again under Programs</Link>.</p>
             </div>
           )}
         </div>

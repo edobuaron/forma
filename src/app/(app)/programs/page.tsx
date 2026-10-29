@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { NewProgramButton } from "@/components/programs/program-actions";
+import { AddStarterButton, NewProgramButton } from "@/components/programs/program-actions";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, PageHeader } from "@/components/ui/misc";
 import { getProgram, listPrograms } from "@/lib/data/queries";
@@ -16,8 +16,8 @@ export default async function ProgramsPage() {
     <>
       <PageHeader title="Programs" subtitle="Templates define what you plan to do. Workouts record what you did." actions={<NewProgramButton />} />
       {programs.length === 0 && (
-        <EmptyState title="No programs yet" action={<NewProgramButton />}>
-          A program holds the workouts you plan to do. Create one, add workouts, then add exercises from your library.
+        <EmptyState title="No programs yet" action={<div className="flex flex-wrap justify-center gap-2"><NewProgramButton /><AddStarterButton /></div>}>
+          A program holds the workouts you plan to do. Create one and add workouts and exercises, or add a fresh copy of the 4-day starter program.
         </EmptyState>
       )}
       <div className="space-y-3">
@@ -28,6 +28,7 @@ export default async function ProgramsPage() {
                 <div className="flex items-center gap-2">
                   <h2 className="text-[17px] font-semibold tracking-tight">{p!.name}</h2>
                   {p!.is_active && <Badge tone="accent">Active</Badge>}
+                  {p!.starter_version != null && <Badge tone="outline">Starter</Badge>}
                   <Badge tone="outline">v{p!.version}</Badge>
                 </div>
                 {p!.description && <p className="mt-1 line-clamp-2 text-[13px] text-muted-foreground">{p!.description}</p>}
@@ -45,6 +46,12 @@ export default async function ProgramsPage() {
           </Link>
         ))}
       </div>
+      {programs.length > 0 && (
+        <div className="mt-8 flex flex-col items-center gap-2 text-center text-[13px] text-muted-foreground">
+          <p>Want the 4-day starter back? It&apos;s added as a new copy; nothing else changes.</p>
+          <AddStarterButton />
+        </div>
+      )}
     </>
   );
 }

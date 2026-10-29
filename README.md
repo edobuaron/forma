@@ -12,7 +12,7 @@ Next.js 15 · React 19 · TypeScript · Tailwind CSS v4 · shadcn-style componen
 | Area | What works |
 |---|---|
 | Auth | Email + password, magic link, protected routes, sign-out |
-| Setup | On first sign-in, choose an empty program or the optional example 4-day template, plus an optional display name and kg/lb. Skippable; body measurements aren't required. No performance numbers are ever preloaded. |
+| Starter program | Every new account gets its own editable copy of a sanitized, versioned 4-day starter (structure only: workouts, exercises, order, sets, rep ranges, rest, neutral notes). Seeded once; archiving or deleting it is permanent, and Programs offers "Add starter program again". A short, skippable setup asks for a display name and kg/lb. No performance data is ever preloaded. |
 | Active workout | Pick any workout on any day (no fixed weekdays), or log one for a past day. Elapsed time, prescribed sets/reps/rest, suggested load, previous session per set, editable weight/reps/RIR, one-tap set completion, warm-up sets, add/remove sets, add/remove/replace/reorder exercises, exercise and workout notes, auto rest timer (+/−15 s, skip), autosave with resume, finish and discard |
 | Live comparison | Each completed set is compared with the same set last time: "+1 rep", "+2.5 kg", "Matched", "−2 reps", or "Heavier · new baseline" when load and reps move in opposite directions. The previous session opens from the exercise card. |
 | Progression | Deterministic, exercise-aware rules (double progression, reps-first for lateral raises and rear delts, bodyweight reps, no load progression for skill work). Suggestions explain themselves and can be dismissed. |
@@ -50,7 +50,7 @@ You need Node.js 20+ and a Supabase project (the free tier is fine).
    npm install
    npm run dev
    ```
-6. Open http://localhost:3000, choose **Create account**, and pick an empty program or the example template.
+6. Open http://localhost:3000, choose **Create account**, and your starter program is ready to edit.
 
 Once your account exists, consider turning off public sign-ups (Authentication → Providers → Email → *Allow new users to sign up*). It's a personal app.
 
@@ -124,14 +124,14 @@ Before deploying this update:
 
 Reference: [Supabase password recovery](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail). JSON export is available; in-app backup restore is not yet implemented.
 
-## New accounts and the exercise catalog (migration 009)
+## New accounts and the exercise catalog (migrations 009 and 010)
 
-New accounts start with a short, skippable setup: an empty program or the optional, clearly labelled example 4-day template, an optional display name, and kg/lb. Sign-up and `ensure_seeded()` only create the profile, so nothing recreates the old default program. Setup is idempotent: retries and double taps create nothing more.
+Every new account gets its own copy of the starter program at sign-up (`seed_starter_program`, template v1). It copies structure only and never reads another account: no loads, reps, RIR, history, records, measurements, recommendations or personal notes. Exercise notes come from the catalog and are neutral weight-entry and technique cues. The copy is seeded once (`profiles.starter_seeded_at`): `ensure_seeded()`, sign-in, refresh and an empty dashboard never recreate it, and Programs → **Add starter program again** makes a fresh copy on request. Setup then asks only for an optional display name and kg/lb, and is safe to retry.
 
-The catalog source is `src/lib/catalog/catalog.ts` (versioned; `CATALOG_VERSION`). It was written for Forma rather than imported, so there's no third-party licence or attribution to carry, and it has no images or videos. Notes are neutral weight-entry and technique cues; increments are generic defaults and are labelled as such. `npm test` fails if the SQL in the migration drifts from the source; regenerate with `UPDATE_CATALOG_SQL=1 npx vitest run src/lib/catalog` and ship catalog changes in a new migration.
+The catalog source is `src/lib/catalog/catalog.ts` (versioned; `CATALOG_VERSION`). It was written for Forma rather than imported, so there's no third-party licence or attribution to carry, and it has no images or videos. Increments are generic defaults and are labelled as such. `npm test` fails if the SQL in migration 009 drifts from the source; regenerate with `UPDATE_CATALOG_SQL=1 npx vitest run src/lib/catalog` and ship catalog changes in a new migration.
 
 Before deploying this update:
 
-- Apply `20261027000009_onboarding_and_catalog.sql` after 008, then deploy the app. The app's new setup screen and library call RPCs from this migration.
-- Existing accounts are marked as already set up; their programs, history, names and notes are unchanged. The 22 originally seeded exercises are linked to their catalog entries so the catalog shows them as "In library", and assisted exercises get the explicit `assistance` weight entry (only the label changes).
+- Apply `20261027000009_onboarding_and_catalog.sql` (if not yet applied), then `20261029000010_starter_program_for_new_accounts.sql`, then deploy the app. The new client calls RPCs from both.
+- Existing accounts are marked as already seeded and keep their programs, history, names and notes. The 22 originally seeded exercises are linked to their catalog entries, and assisted exercises get the explicit `assistance` weight entry (only the label changes).
 - If you turned off public sign-ups, invite the friend from Supabase Auth (Users → Invite) or turn sign-ups on temporarily.

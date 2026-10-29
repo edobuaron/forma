@@ -19,6 +19,9 @@ export interface ProfileRow {
   /** null until first-run setup is done. Added in migration 009. */
   onboarded_at: string | null;
   setup_choice: "empty" | "starter" | "legacy" | null;
+  /** When this account's one automatic starter copy was made (migration 010). Never reset. */
+  starter_seeded_at: string | null;
+  starter_version: number | null;
   created_at: string;
 }
 
@@ -62,6 +65,8 @@ export interface ProgramRow {
   description: string | null;
   is_active: boolean;
   version: number;
+  /** Starter template version this program was copied from; null for programs the user made. */
+  starter_version: number | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
