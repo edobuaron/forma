@@ -45,8 +45,8 @@ export function WeekStrip({ days, templates }: { days: StripDay[]; templates: St
               >
                 {done ? <Check className="size-4 animate-pop" strokeWidth={3} aria-hidden /> : dt.getDate()}
               </span>
-              <span className="hidden w-full truncate text-center text-[11px] text-muted-foreground sm:block">
-                {done ? d.workouts.map((w) => w.name).join(" + ") : d.isToday ? "Today" : " "}
+              <span className={cn("hidden w-full truncate text-center text-[11px] sm:block", done ? "font-medium text-foreground" : "text-muted-foreground")}>
+                {done ? d.workouts.map((w) => w.name).join(" + ") : " "}
               </span>
             </button>
           );

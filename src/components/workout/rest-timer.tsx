@@ -55,14 +55,14 @@ export function RestTimer({ rest, onChange, sound }: { rest: RestState | null; o
 
   return (
     <div className="pb-safe fixed inset-x-0 bottom-0 z-40 px-3 pb-3 md:left-60">
-      <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border bg-card/95 shadow-xl backdrop-blur-xl animate-in">
-        <div className="h-[3px] bg-subtle">
-          <div className="h-full bg-accent transition-[width] duration-300 ease-linear" style={{ width: `${pct * 100}%` }} />
+      <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border bg-card/95 shadow-raised backdrop-blur-xl animate-in">
+        <div className="h-1 bg-subtle">
+          <div className={`h-full transition-[width] duration-300 ease-linear ${done ? "bg-done" : "bg-accent"}`} style={{ width: `${pct * 100}%` }} />
         </div>
         <div className="flex items-center gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[12px] font-medium text-muted-foreground">{done ? "Rest complete" : "Rest"} · {rest.label}</p>
-            <p className={`text-[26px] font-semibold leading-tight tabular tracking-tight ${done ? "text-accent" : ""}`}>
+            <p className={`num text-[30px] leading-tight ${done ? "text-done" : ""}`}>
               {done ? "Go" : formatDuration(remaining * 1000)}
             </p>
           </div>

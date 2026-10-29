@@ -541,16 +541,16 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
   return (
     <div className="min-h-dvh pb-40">
       {/* Header */}
-      <header className="pt-safe sticky top-0 z-30 border-b bg-background/85 backdrop-blur-xl">
+      <header className="pt-safe sticky top-0 z-30 border-b bg-sidebar/90 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-2xl items-center gap-2 px-2 md:px-4">
           <Link href="/" aria-label="Back to dashboard" className="grid size-10 place-items-center rounded-full text-muted-foreground hover:bg-muted">
             <ChevronLeft className="size-5" />
           </Link>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-semibold leading-tight tracking-tight">{initialSession.name}</p>
-            <p className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground tabular">
-              {backdated ? <span>Logging for {format(startedAt, "EEE d MMM")}</span> : <span suppressHydrationWarning>{formatDuration(elapsed)}</span>}
-              {counts.planned > 0 && <span>· {counts.plannedDone}/{counts.planned}<span className="max-[359px]:sr-only"> sets</span></span>}
+            <p className="truncate text-[16px] font-bold leading-tight tracking-[-0.02em]">{initialSession.name}</p>
+            <p className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground tabular">
+              {backdated ? <span>Logging for {format(startedAt, "EEE d MMM")}</span> : <span suppressHydrationWarning className="font-semibold text-foreground">{formatDuration(elapsed)}</span>}
+              {counts.planned > 0 && <span>· <span className="font-semibold text-done">{counts.plannedDone}</span>/{counts.planned}<span className="max-[359px]:sr-only"> sets</span></span>}
               <span aria-live="polite" className="flex items-center gap-1">
                 ·{" "}
                 {sync.status === "saving" ? (<><Loader2 className="size-3 animate-spin" /> <span className="max-[359px]:sr-only">Saving</span></>)
@@ -585,17 +585,17 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
         {counts.planned > 0 && (
           <div
             role="progressbar" aria-label="Planned sets done" aria-valuemin={0} aria-valuemax={counts.planned} aria-valuenow={counts.plannedDone}
-            className="h-0.5 bg-subtle"
+            className="h-1 bg-subtle"
           >
-            <div className="h-full bg-done transition-[width] duration-300" style={{ width: `${(100 * counts.plannedDone) / counts.planned}%` }} />
+            <div className="h-full rounded-r-full bg-done transition-[width] duration-300" style={{ width: `${(100 * counts.plannedDone) / counts.planned}%` }} />
           </div>
         )}
       </header>
 
       <div className="mx-auto max-w-2xl space-y-3 px-3 pt-4 md:px-4">
         {warmupNotes && items.every((i) => i.sets.every((s) => !s.completed)) && (
-          <p className="rounded-lg border border-dashed px-4 py-3 text-[13.5px] text-muted-foreground">
-            <span className="font-medium text-foreground">Warm-up</span> · {warmupNotes}
+          <p className="rounded-lg border border-dashed border-input bg-muted/40 px-4 py-3 text-[13.5px] text-muted-foreground">
+            <span className="font-semibold text-foreground">Warm-up</span> · {warmupNotes}
           </p>
         )}
         {items.map((item, idx) => {
@@ -638,7 +638,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
         </Button>
 
         <div className="pt-4">
-          <label className="mb-1.5 block px-1 text-[13px] font-medium text-muted-foreground" htmlFor="session-notes">Workout notes</label>
+          <label className="mb-1.5 block px-1 text-[15px] font-semibold tracking-tight" htmlFor="session-notes">Workout notes</label>
           <Textarea id="session-notes" value={notes} onChange={(e) => onSessionNotes(e.target.value)} placeholder="Sleep, energy, anything worth remembering…" />
         </div>
       </div>

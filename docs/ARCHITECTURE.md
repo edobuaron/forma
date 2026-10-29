@@ -51,12 +51,14 @@ Mobile: bottom tab bar (Today · Workout · History · Progress · More). Deskto
 
 ## 4. Design system
 
-- **Type**: Geist Sans (UI, bundled locally) with tabular numerals for every number; tight tracking on headings. Scale 12/13/14/16/20/24/32/44.
-- **Color**: neutral zinc scale. Light: `#FAFAF9` background, white cards, hairline borders. Dark: `#0A0A0B` background, `#141416` cards, low-contrast borders. **One accent**: a restrained blue-indigo (`oklch(0.58 0.17 262)`), used for primary actions, active state, and the primary chart series only. Positive/negative deltas use muted green/amber text, never filled blocks.
-- **Shape & space**: 4px grid; card radius 16px, controls 12px; 44px minimum touch target, 56px for set-logging controls.
-- **Motion**: 150–200ms ease-out for state changes; no bouncing; respects `prefers-reduced-motion`.
-- **Charts**: single-series in the accent, secondary series in neutral gray, no gridline clutter, hover/tap tooltips.
-- **Components**: shadcn/ui-style primitives in `src/components/ui` (Button, Card, Input, Dialog/Sheet, Tabs, Switch, Badge) customised to the above.
+- **Direction**: a confident athletic training app. Dark-first: deep navy page, blue-tinted panels that separate from the page by value; light mode is a cool blue-white with white panels. Tokens live in `src/app/globals.css`.
+- **Colour has one job each**: vivid blue (`primary` fill, `accent` text/lines) for actions, selection, focus and load/volume charts; teal (`positive`, aliased as `done`) for completed sets, gains and consistency; amber (`negative`, aliased as `pending`) for attention and "below last time", never failure; violet (`record`) for personal records and body charts; red (`destructive`) for delete only. Contrast of every text colour on panels is ≥ 4.5:1 in both themes.
+- **Training categories** (push, pull, legs, core, mixed) get a small marker colour (`cat-*`) from `src/lib/category.ts`: workouts by name, exercises by primary muscles. Markers are bars, dots or icon tiles, never fills, and are always paired with a name or label so meaning never depends on colour alone.
+- **Type**: Geist Sans with tabular numerals; headings bold with tight tracking (page titles 30/36, panel titles 15 semibold); key figures use the `num` utility (tabular, 650 weight, tight).
+- **Shape & space**: 4px grid; panels 18px radius, hero 24px, controls 12px; 44px minimum touch target, 56px for the primary start action.
+- **Focus & motion**: one global `:focus-visible` outline in the ring blue; 150–260ms ease-out feedback (press scale, check pop); everything collapses under `prefers-reduced-motion`.
+- **Charts**: one series colour chosen by what is measured, earlier weeks in neutral blue-gray, units stated in each panel subtitle.
+- **Components**: shadcn-style primitives in `src/components/ui` (Button, Card, Badge, Segmented, Sheet, Switch, EmptyState, PageHeader, category markers).
 
 ## 5. Database model (Postgres)
 

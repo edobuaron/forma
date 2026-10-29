@@ -55,8 +55,8 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-8 text-center">
-        <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-positive/10 text-positive"><Check className="size-6" strokeWidth={2.5} /></span>
-        <h1 className="text-[28px] font-semibold tracking-[-0.02em]">{session.name} complete</h1>
+        <span className="mx-auto mb-4 grid size-14 place-items-center rounded-full bg-done text-background shadow-[0_10px_30px_-10px_var(--done)]"><Check className="size-7 animate-pop" strokeWidth={3} /></span>
+        <h1 className="text-[30px] font-bold leading-tight tracking-[-0.03em] md:text-[36px]">{session.name} complete</h1>
         <p className="mt-1 text-[14px] text-muted-foreground">{format(new Date(session.started_at), "EEEE d MMMM")}</p>
       </div>
 
@@ -67,8 +67,8 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
           { icon: Dumbbell, label: "Volume", value: formatVolume(volume, unit) },
         ].map((s) => (
           <Card key={s.label} className="p-4">
-            <s.icon className="mb-2 size-4 text-muted-foreground" />
-            <p className="whitespace-nowrap text-[17px] font-semibold tabular tracking-tight sm:text-[20px]">{s.value}</p>
+            <s.icon className="mb-2 size-4 text-accent" />
+            <p className="num whitespace-nowrap text-[19px] sm:text-[24px]">{s.value}</p>
             <p className="text-[12px] text-muted-foreground">{s.label}</p>
           </Card>
         ))}
@@ -76,14 +76,14 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
 
       {records.length > 0 && (
         <Card className="mb-4 p-5">
-          <h2 className="mb-3 flex items-center gap-2 text-[13px] font-medium text-muted-foreground"><Award className="size-4 text-accent" /> Personal records</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold tracking-tight"><Award className="size-4 text-record" /> Personal records</h2>
           <ul className="space-y-2">
             {records.map((r) => {
               const ex = session.exercises.find((e) => e.exercise_id === r.exercise_id)?.exercise;
               return (
                 <li key={r.id} className="flex items-baseline justify-between gap-3 text-[14px]">
                   <span><span className="font-medium">{ex?.name}</span> <span className="text-muted-foreground">· {recordLabel(prLabel(r.type as PRType), r.side)}</span></span>
-                  <span className="shrink-0 font-medium tabular">
+                  <span className="shrink-0 font-bold tabular text-record">
                     {r.type === "best_e1rm" ? `${formatWeight(Number(r.value), unit)} est.` : r.type === "least_assistance" ? formatWeight(Number(r.value), unit) + " assist" : `${formatWeight(Number(r.load_kg ?? 0), unit)} × ${r.reps}`}
                   </span>
                 </li>
@@ -95,7 +95,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
 
       {improvements.length > 0 && (
         <Card className="mb-4 p-5">
-          <h2 className="mb-2 text-[13px] font-medium text-muted-foreground">Main improvements</h2>
+          <h2 className="mb-2 text-[15px] font-semibold tracking-tight">Main improvements</h2>
           <p className="text-[14px] leading-relaxed">
             Beat last session on {improvements.map((r) => r.e.exercise.name).join(", ")}.
           </p>
@@ -117,7 +117,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
             {r.attachment.state && <p className="mb-1.5 text-[12.5px] text-muted-foreground">Attachment: {attachmentLabel(r.attachment)}</p>}
             <StreamComparisonList items={r.streams} loadType={r.cfg.loadType} unit={unit} />
             <p className="mt-3 border-t pt-3 text-[13px] text-muted-foreground">
-              <span className="font-medium text-foreground">Next time:</span> {headline(r.rec, r.cfg, unit).replace(" today.", " next session.")}
+              <span className="font-semibold text-accent">Next time:</span> {headline(r.rec, r.cfg, unit).replace(" today.", " next session.")}
             </p>
           </Card>
         ))}

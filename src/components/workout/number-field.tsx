@@ -86,7 +86,7 @@ export function NumberField({
           if (p !== "invalid") onCommit(p);
         }}
         className={cn(
-          "h-11 w-full min-w-0 rounded-md border border-transparent bg-subtle text-center text-[16px] font-medium tabular outline-none transition-colors",
+          "h-11 w-full min-w-0 rounded-md border border-transparent bg-subtle text-center text-[17px] font-semibold tabular outline-none transition-colors",
           "placeholder:font-normal placeholder:text-muted-foreground/60 focus:border-accent/50 focus:bg-card focus:ring-2 focus:ring-ring",
           suggested && "text-muted-foreground",
           invalid && "border-negative/70 text-negative focus:border-negative focus:ring-negative/35",

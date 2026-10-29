@@ -17,6 +17,8 @@ import { displayToKg, kgToDisplay } from "@/lib/domain/units";
 import { plannedSets } from "@/lib/data/set-rows";
 import { toAttachmentRef, toLoggedSet } from "@/lib/data/types";
 import { cn, formatDuration } from "@/lib/utils";
+import { ExerciseIcon } from "@/components/ui/category";
+import { exerciseCategory } from "@/lib/category";
 import { AttachmentChip } from "./attachment-picker";
 import { comparisonText, formatPerformance, formatSetShort, loadColumnLabel } from "./format";
 import { MenuCheckboxItem } from "./menu-checkbox-item";
@@ -61,7 +63,7 @@ const SET_GRID = {
 };
 const focusRing = "outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const footerButton = cn("flex h-11 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] @md:px-3 font-medium text-muted-foreground hover:bg-muted", focusRing);
-const activeRow = "shadow-[inset_2px_0_0_var(--accent)] bg-accent-soft/60";
+const activeRow = "shadow-[inset_3px_0_0_var(--accent)] bg-accent-soft";
 const iconButton = cn("grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted", focusRing);
 
 export function ExerciseCard(p: Props) {
@@ -113,19 +115,21 @@ export function ExerciseCard(p: Props) {
   let workingIdx = -1;
   let sidedIdx = -1;
 
+  const hasActive = item.sets.some((s) => s.id === p.activeSetId);
   return (
-    <section aria-labelledby={ids.title} className="@container rounded-xl border bg-card shadow-card">
+    <section aria-labelledby={ids.title} className={cn("@container rounded-xl border bg-card shadow-card transition-[border-color,box-shadow]", complete && "border-done/35", hasActive && "border-accent/45 ring-1 ring-accent/20")}>
       {/* Header */}
       <div className="flex items-start gap-1 pb-1 pl-4 pr-2 pt-4 md:pl-5 md:pr-3">
+        <ExerciseIcon category={exerciseCategory(item.exercise.primary_muscles)} equipment={item.exercise.equipment} className="mr-2 mt-0.5 hidden @sm:grid" />
         <button
           aria-expanded={!collapsed}
           aria-controls={collapsed ? undefined : ids.body}
           className={cn("-ml-1 mr-1 min-h-11 min-w-0 flex-1 rounded-md pl-1 text-left", focusRing)}
           onClick={() => setCollapsed((c) => !c)}
         >
-          <h2 id={ids.title} className="flex items-center gap-2 text-[17px] font-semibold leading-snug tracking-tight">
+          <h2 id={ids.title} className="flex items-center gap-2 text-[18px] font-bold leading-snug tracking-[-0.02em]">
             <span className="line-clamp-2">{ex.name}</span>
-            <span className={cn("ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium tabular", complete ? "bg-done/12 text-done" : "bg-subtle text-muted-foreground")}>
+            <span className={cn("ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium tabular", complete ? "bg-done/15 text-done" : "bg-subtle text-muted-foreground")}>
               {complete && <Check aria-hidden className="size-3.5" strokeWidth={2.75} />}
               {done}/{total}<span className="sr-only"> planned sets done{complete ? ", complete" : ""}</span>
             </span>
@@ -179,7 +183,7 @@ export function ExerciseCard(p: Props) {
             )}
             {latest ? (
               <button aria-haspopup="dialog" onClick={() => setShowPrev(true)} className={cn("-mx-1 block min-h-11 w-[calc(100%+0.5rem)] rounded-md px-1 py-1.5 text-left text-[13px] text-muted-foreground", focusRing)}>
-                <span className="font-medium text-foreground/80">Last time</span>{" "}
+                <span className="font-semibold text-foreground/85">Last time</span>{" "}
                 <span className="tabular">{formatPerformance(latest.sets, ex.loadType, unit, workingSets(latest.sets, ex))}</span>
                 {prevSummary?.prescribedSets != null && latestDone < prevSummary.prescribedSets && <span> · {latestDone}/{prevSummary.prescribedSets} sets</span>}
                 {latest.attachment?.state && <span> · {latest.attachment.state === "none" ? "no attachment" : latest.attachment.name}</span>}
@@ -196,9 +200,9 @@ export function ExerciseCard(p: Props) {
 
             {/* first_time with a history means nothing comparable (other attachment or mode): say what to do. */}
             {rec && (rec.action !== "first_time" || latest) && !p.recommendationDismissed && (
-              <div className="rounded-md bg-accent-soft px-3 py-2.5">
+              <div className="rounded-md border-l-[3px] border-accent bg-accent-soft px-3 py-2.5">
                 <div className="flex items-start">
-                  <p className="flex-1 pr-1 text-[13.5px] font-medium leading-snug text-accent">{headline(rec, ex, unit)}</p>
+                  <p className="flex-1 pr-1 text-[13.5px] font-semibold leading-snug text-accent">{headline(rec, ex, unit)}</p>
                   <button
                     aria-label="Why this suggestion"
                     aria-expanded={showWhy}
@@ -227,7 +231,7 @@ export function ExerciseCard(p: Props) {
 
           {/* Set table */}
           <div className="mt-2 px-1 @md:px-2 md:px-3">
-            <div aria-hidden className={cn("grid items-center gap-1.5 px-1.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground @md:px-2", setGrid)}>
+            <div aria-hidden className={cn("grid items-center gap-1.5 px-1.5 pb-1 text-[11.5px] font-semibold text-muted-foreground @md:px-2", setGrid)}>
               <span className="text-center">Set</span>
               <span className="hidden @md:block">Previous</span>
               <span className="text-center">{loadColumnLabel(ex.loadType, unit)}</span>
@@ -433,10 +437,10 @@ function CompleteButton({ done, label, onClick }: { done: boolean; label: string
       className={cn(
         "grid h-11 w-12 place-items-center rounded-md transition-[background-color,transform] active:scale-95 motion-reduce:active:scale-100",
         focusRing,
-        done ? "bg-done text-white dark:text-black" : "bg-subtle text-muted-foreground hover:bg-subtle/70",
+        done ? "bg-done text-background" : "border border-input bg-card text-muted-foreground hover:border-done/60 hover:text-done",
       )}
     >
-      <Check className="size-5" strokeWidth={2.6} />
+      <Check className={cn("size-5", done && "animate-pop")} strokeWidth={done ? 3 : 2.4} />
     </button>
   );
 }
