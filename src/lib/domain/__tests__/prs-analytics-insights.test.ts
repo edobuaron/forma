@@ -85,6 +85,22 @@ describe("insights", () => {
     expect(volumeInsights(weeks, "2026-10-26")[0].key).toBe("volume:side_delts:2026-10-19");
     expect(volumeInsights(weeks.slice(1), "2026-10-26")).toEqual([]);
   });
+  it("maintenance muscles are described against that choice", () => {
+    const weeks = [
+      { week: "2026-09-28", sets: { quads: 4, side_delts: 8 } },
+      { week: "2026-10-05", sets: { quads: 4, side_delts: 8 } },
+      { week: "2026-10-12", sets: { quads: 4, side_delts: 8 } },
+      { week: "2026-10-19", sets: { quads: 9, side_delts: 14 } },
+      { week: "2026-10-26", sets: {} as Record<string, number> },
+    ];
+    const neutral = volumeInsights(weeks, "2026-10-26");
+    expect(neutral.map((i) => i.title)).toEqual(["Quads volume increased substantially", "Side delts volume increased substantially"]);
+    const withMaintenance = volumeInsights(weeks, "2026-10-26", ["quads"]);
+    const quads = withMaintenance.find((i) => i.key === "volume:quads:2026-10-19")!;
+    expect(quads.title).toBe("Quads volume rose above your maintenance level");
+    expect(quads.detail).toMatch(/set quads to maintenance/);
+    expect(withMaintenance.find((i) => i.key.startsWith("volume:side_delts"))!.title).toMatch(/increased substantially/);
+  });
   it("weekStart is Monday", () => {
     expect(weekStart(new Date(2026, 9, 25))).toBe("2026-10-19"); // Sunday → previous Monday
   });

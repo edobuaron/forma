@@ -107,7 +107,7 @@ export function recommend(
 
   // Skill work: never apply hypertrophy progression automatically.
   if (ex.progression === "skill") {
-    const reasons = [`Last session: ${repsText} reps.`, "Progress through quality, speed and height — not load."];
+    const reasons = [`Last session: ${repsText} reps.`, "Progress through quality and control — not load."];
     if (ex.loadType === "assisted" && allAtTop(lastAtLoad, repMax, required) && displayLoad > 0) {
       reasons.push("All sets reached the top of the range. If every rep was crisp, try slightly less assistance.");
     }
@@ -417,7 +417,7 @@ export function headline(rec: Recommendation, ex: ExerciseConfig, unit: WeightUn
     case "first_time":
       return "First time — find a working weight with ~2 reps in reserve.";
     case "skill":
-      return "Skill work — prioritise quality, speed and height.";
+      return "Skill work — prioritise quality and control over load.";
     case "increase_load":
       return assisted
         ? `All target reps achieved. Try ${loadLabel(w!)} next.`
@@ -462,7 +462,7 @@ function sidesHeadline(rec: Recommendation, ex: ExerciseConfig, unit: WeightUnit
     case "first_time":
       return "First time — find a working weight for each side with ~2 reps in reserve.";
     case "skill":
-      return "Skill work — prioritise quality, speed and height.";
+      return "Skill work — prioritise quality and control over load.";
     case "sides_baseline":
       return loads ? `First time logging sides separately. Start at ${loads}.` : "First time logging sides separately.";
     case "increase_load":

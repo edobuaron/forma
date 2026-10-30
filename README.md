@@ -21,10 +21,10 @@ Next.js 15 · React 19 · TypeScript · Tailwind CSS v4 · shadcn-style componen
 | Exercise library | A built-in catalog of 119 exercises to browse and copy into your library (programs never change). Create exercises from the library or from an empty search, including inside the workout picker. CSV import with a preview ([format](docs/EXERCISE_IMPORT.md)). Edit and archive: muscles, equipment, load type, explicit weight entry (total, per dumbbell, per side, stack, added weight, assistance), increment (generic defaults are labelled), exact available loads, progression strategy, e1RM eligibility, technique notes |
 | Exercise pages | Progress chart (e1RM, top set, reps at top load, volume, total reps; 4W to All), bests, best reps at each load, heaviest load for N reps, last vs previous session, PRs, history, recommendation |
 | Programs | Edit templates, sets/reps/rest/RIR, optional exercises, reorder, substitute, duplicate workouts and programs, version history with change notes |
-| Analytics | Exercise progress, weekly volume, workouts per week, weekly sets per muscle group, exercise frequency, pull-up / dip / muscle-up progression, monthly and yearly totals, bodyweight |
+| Analytics | Exercise progress, weekly volume, workouts per week, weekly sets per muscle group, exercise frequency, bodyweight and skill movement progression, monthly and yearly totals, bodyweight |
 | Insights | Conservative, minimum-data rules: declining performance across 3 comparable sessions, plateaus, frequent RIR 0, weekly volume spikes. Never diagnostic. Dismissable. |
 | Body | Bodyweight and circumferences, trends, history table |
-| Settings | Theme (light/dark/system), kg/lb, default rest, auto rest timer, rest sound, conservative progression |
+| Settings | Theme (light/dark/system), kg/lb, default rest, auto rest timer, rest sound, conservative progression, optional maintenance muscles (none by default) |
 | Export | Full JSON backup, CSV set log, CSV body measurements |
 | PWA | Installable on iPhone and desktop, app icons, offline notice page |
 

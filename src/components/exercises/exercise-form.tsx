@@ -13,12 +13,12 @@ import {
   conventionProblem, defaultCategory, defaultProgression, defaultWeightEntry, e1rmAllowed, LOAD_TYPE_LABEL, WEIGHT_ENTRY_LABEL,
 } from "@/lib/catalog/conventions";
 import { cleanText } from "@/lib/catalog/names";
-import { MUSCLE_LABELS } from "@/lib/domain/analytics";
 import { archiveExercise, createExercise, updateExercise, type ExerciseInput } from "@/lib/data/mutations";
 import { listAttachments } from "@/lib/data/queries";
 import type { AttachmentRow, ExerciseRow } from "@/lib/data/types";
 import { sideTrackingSuitable } from "@/lib/domain/sides";
 import { AttachmentChip, AttachmentPicker } from "@/components/workout/attachment-picker";
+import { MuscleChips } from "./muscle-chips";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -63,22 +63,6 @@ const ENTRY_OPTIONS: Record<ExerciseInput["load_type"], WeightEntry[]> = {
   weighted_bodyweight: ["added"],
   assisted: ["assistance"],
 };
-
-function MuscleChips({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {Object.entries(MUSCLE_LABELS).map(([k, label]) => {
-        const on = value.includes(k);
-        return (
-          <button type="button" key={k} aria-pressed={on} onClick={() => onChange(on ? value.filter((v) => v !== k) : [...value, k])}
-            className={cn("h-8 rounded-full border px-3 text-[13px] transition-colors", on ? "border-accent bg-accent-soft font-medium text-accent" : "text-muted-foreground hover:bg-muted")}>
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export function ExerciseForm({ open, onOpenChange, exercise, initialName, onCreated }: {
   open: boolean;

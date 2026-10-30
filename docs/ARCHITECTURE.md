@@ -76,7 +76,7 @@ All ids are `uuid`. All rows carry `user_id` with RLS. Weights are stored in **k
 - `body_measurements` — dated bodyweight and circumferences.
 - `dismissed_recommendations` — rule key + evidence session; a dismissal lasts until new evidence arrives.
 
-Seeding: a trigger on `auth.users` creates the profile and calls `seed_default_program(user_id)`, which loads Edoardo's 4-day program and exercise library with per-exercise increments. No performance data is preloaded (the +15 kg pull-up estimate is shown as a starting note only).
+Seeding: a trigger on `auth.users` creates the profile and seeds a sanitized, versioned starter program once (`seed_starter_program`, migration 010): structure only, copied from the catalog. No performance data, loads or estimates are preloaded.
 
 ## 6. Domain logic (deterministic, unit-tested)
 
@@ -85,11 +85,12 @@ Seeding: a trigger on `auth.users` creates the profile and calls `seed_default_p
 - **e1RM**: Epley, labelled as an estimate; only for e1RM-eligible lifts and sets of ≤ 12 reps.
 - **PRs**: heaviest load (eligible lifts), most reps at a given load (seen before), best e1RM; weighted pull-ups track external load; skill exercises record "first completed rep".
 - **Insights** (first version shipped in the MVP): minimum 3 comparable sessions before any trend claim (4 for plateaus, 3 prior weeks for volume spikes); never diagnostic language; dismissable.
+- **Training focus**: no muscle group is special by default. A user can mark muscles as maintenance (`profiles.maintenance_muscles`, migration 012); Progress marks them and their volume-spike insight is worded against that choice. Load progression ignores it.
 
 ## 7. Phases
 
 **MVP (this build)**: auth, themes, dashboard, preloaded program, exercise & template editing with versioning, active workout with autosave/resume, previous-session comparison, progression suggestions, session summary, history calendar + editing, exercise progress pages, analytics, a first set of recovery-aware insights, PRs, body measurements, JSON/CSV export, PWA install. Several Phase 2 items landed early because they fell out of the same data.
 
-**Phase 2**: muscle-group volume trends over time with personal targets, richer recovery rules (bodyweight-adjusted pull-up trends, recovery time between similar sessions), rep-range-specific best charts, deeper summaries, JSON re-import.
+**Phase 2**: muscle-group volume trends over time with personal targets, richer recovery rules (bodyweight-adjusted trends for bodyweight movements, recovery time between similar sessions), rep-range-specific best charts, deeper summaries, JSON re-import.
 
-**Phase 3**: offline-first with a sync queue + conflict resolution, web push rest notifications, muscle-up progression tracking, authenticated public API for the personal dashboard, native client if warranted.
+**Phase 3**: offline-first with a sync queue + conflict resolution, web push rest notifications, skill progression tracking, authenticated public API for the personal dashboard, native client if warranted.

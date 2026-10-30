@@ -27,7 +27,7 @@ Sessions reference templates with `on delete set null`; they never depend on the
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `profiles` | Per-user settings | unit, default rest, auto rest timer, rest sound, bodyweight, conservative progression, `onboarded_at` / `setup_choice`, `starter_seeded_at` / `starter_version` (the one automatic starter copy; never reset) |
+| `profiles` | Per-user settings | unit, default rest, auto rest timer, rest sound, bodyweight, conservative progression, `onboarded_at` / `setup_choice`, `starter_seeded_at` / `starter_version` (the one automatic starter copy; never reset), `maintenance_muscles` (migration 012; empty by default) |
 | `exercises` | User's exercise library | `category` (compound / isolation / bodyweight / weighted_bodyweight / skill), `load_type` (external / bodyweight / weighted_bodyweight / assisted), `progression` (double_progression / reps_first / bodyweight_reps / skill / none), `increment_kg`, optional `available_loads_kg[]`, `weight_convention` (total / per_dumbbell / per_side / stack / added / assistance), `e1rm_eligible`, `archived_at`, `catalog_slug` + `catalog_version` (copied from the catalog; never updated by it), `aliases[]`, `source` (custom / catalog / import), `increment_is_generic` |
 | `exercise_catalog` | Built-in, read-only exercise list | generated from `src/lib/catalog/catalog.ts`; readable by every signed-in user, writable by nobody |
 | `programs` | Training programs | one `is_active` per user; `version` increments on each save; `starter_version` set on starter copies |

@@ -23,6 +23,8 @@ export interface ProfileRow {
   /** When this account's one automatic starter copy was made (migration 010). Never reset. */
   starter_seeded_at: string | null;
   starter_version: number | null;
+  /** Muscles kept at maintenance volume (migration 012). Empty = no focus. Read via maintenanceMuscles(). */
+  maintenance_muscles?: string[] | null;
   created_at: string;
 }
 
@@ -310,4 +312,9 @@ export function rowVolumeKg(r: CountRow): number {
 /** The logging context a new workout would start in for this exercise (its defaults). */
 export function defaultContext(e: Pick<ExerciseRow, "track_sides" | "default_attachment_state" | "default_attachment_id">): { sides: boolean; attachment: AttachmentRef } {
   return { sides: e.track_sides, attachment: { state: e.default_attachment_state, id: e.default_attachment_id, name: null } };
+}
+
+/** The profile's maintenance muscles; [] when unset or before migration 012 is applied. */
+export function maintenanceMuscles(p: Pick<ProfileRow, "maintenance_muscles">): string[] {
+  return Array.isArray(p.maintenance_muscles) ? p.maintenance_muscles : [];
 }

@@ -9,7 +9,7 @@ import { EmptyState, PageHeader } from "@/components/ui/misc";
 import { MUSCLE_LABELS, sessionPoints, TIMEFRAMES, timeframeStart, weekStart, weeklySetsPerMuscle, type TimeframeKey } from "@/lib/domain/analytics";
 import { formatWeight, kgToDisplay } from "@/lib/domain/units";
 import { completedSetHistory, getProfile, groupHistory, listExercises, listMeasurements, listSessionDates } from "@/lib/data/queries";
-import { isWorkingRow, rowSetCredit, rowVolumeKg, toExerciseConfig } from "@/lib/data/types";
+import { isWorkingRow, maintenanceMuscles, rowSetCredit, rowVolumeKg, toExerciseConfig } from "@/lib/data/types";
 import { requireUser } from "@/lib/supabase/server";
 
 export const metadata = { title: "Progress" };
@@ -59,7 +59,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const nWeeks = Math.max(1, weeks.length);
   const muscleTotals = new Map<string, number>();
   for (const m of muscleWeeks.values()) for (const [k, v] of m) muscleTotals.set(k, (muscleTotals.get(k) ?? 0) + v);
-  const muscleAvg = [...muscleTotals.entries()].map(([k, v]) => ({ label: MUSCLE_LABELS[k] ?? k, value: Math.round((v / nWeeks) * 10) / 10 })).sort((a, b) => b.value - a.value);
+  const maintenance = maintenanceMuscles(profile);
+  const muscleAvg = [...muscleTotals.entries()].map(([k, v]) => ({ label: `${MUSCLE_LABELS[k] ?? k}${maintenance.includes(k) ? " · maintenance" : ""}`, value: Math.round((v / nWeeks) * 10) / 10 })).sort((a, b) => b.value - a.value);
 
   // Consistency: average over complete weeks since the first workout in range
   const completeWeeks = weeks.slice(0, -1);
@@ -76,8 +77,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     perYear.set(String(d.getFullYear()), (perYear.get(String(d.getFullYear())) ?? 0) + 1);
   }
 
-  // Pull-up & muscle-up progression
-  const skillish = exercises.filter((e) => /pull-?up|muscle-?up|dip/i.test(e.name) && grouped.has(e.id));
+  // Bodyweight, weighted-bodyweight, assisted and skill movements: charted by reps, added load or assistance.
+  const bodyweightMoves = exercises.filter((e) => (e.load_type !== "external" || e.category === "skill") && grouped.has(e.id));
 
   const bodyweight = measurements.filter((m) => m.bodyweight_kg != null && (!start || new Date(m.measured_on) >= start)).reverse();
 
@@ -116,7 +117,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             <CardHeader><div><CardTitle>Working sets per muscle</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">Weekly average, sets</p></div></CardHeader>
             <CardContent>
               <HBarList items={muscleAvg} />
-              <p className="mt-3 text-[11.5px] text-muted-foreground">Primary muscles count as 1 set, secondary as 0.5. Leg work is maintenance by design.</p>
+              <p className="mt-3 text-[11.5px] text-muted-foreground">Primary muscles count as 1 set, secondary as 0.5.{maintenance.length > 0 && <> Muscles marked maintenance are set in Settings.</>}</p>
             </CardContent>
           </Card>
           <Card>
@@ -125,11 +126,11 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           </Card>
         </div>
 
-        {skillish.length > 0 && (
+        {bodyweightMoves.length > 0 && (
           <Card>
-            <CardHeader><CardTitle>Pull-up, dip & muscle-up progression</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Bodyweight & skill progression</CardTitle></CardHeader>
             <CardContent className="grid gap-6 md:grid-cols-2">
-              {skillish.map((e) => {
+              {bodyweightMoves.map((e) => {
                 const cfg = toExerciseConfig(e);
                 const pts = sessionPoints(cfg, grouped.get(e.id) ?? []);
                 const added = e.load_type === "weighted_bodyweight";
@@ -164,7 +165,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
               {bodyweight.length >= 2 ? (
                 <TrendLine height={180} color="var(--record)" suffix={` ${unit}`} data={bodyweight.map((m) => ({ x: format(new Date(m.measured_on), "d MMM"), y: kgToDisplay(Number(m.bodyweight_kg), unit) }))} />
               ) : (
-                <p className="py-12 text-center text-[13px] text-muted-foreground">Log bodyweight in Body to see it here. It also gives context to pull-up performance.</p>
+                <p className="py-12 text-center text-[13px] text-muted-foreground">Log bodyweight in Body to see it here. It also gives context to bodyweight exercises.</p>
               )}
             </CardContent>
           </Card>

@@ -11,9 +11,10 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { displayToKg, kgToDisplay } from "@/lib/domain/units";
 import { AccountSettings } from "./account-settings";
+import { MuscleChips } from "@/components/exercises/muscle-chips";
 import { useShowRir } from "@/components/workout/rir-visibility";
 import { updateProfile } from "@/lib/data/mutations";
-import type { ProfileRow } from "@/lib/data/types";
+import { maintenanceMuscles, type ProfileRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -74,7 +75,7 @@ export function SettingsForm({ profile, email }: { profile: ProfileRow; email?: 
         <Row label="Display name">
           <Input aria-label="Display name" maxLength={120} defaultValue={p.display_name ?? ""} className="h-9 w-40 text-right" onBlur={(e) => e.target.value !== (p.display_name ?? "") && save({ display_name: e.target.value || null })} />
         </Row>
-        <Row label="Bodyweight" sub="Recorded with each workout for pull-up context">
+        <Row label="Bodyweight" sub="Recorded with each workout for bodyweight exercises">
           <div className="flex items-center gap-2">
             <Input aria-label="Bodyweight" key={`${p.unit}:${p.bodyweight_kg}`} inputMode="decimal" defaultValue={p.bodyweight_kg != null ? kgToDisplay(Number(p.bodyweight_kg), p.unit) : ""} className="h-9 w-20 text-right"
               onBlur={(e) => { const v = e.target.value.trim(); const n = Number(v.replace(",", ".")); if (v === "") save({ bodyweight_kg: null }); else if (Number.isFinite(n) && displayToKg(n, p.unit) >= 20 && displayToKg(n, p.unit) <= 400) save({ bodyweight_kg: displayToKg(n, p.unit) }); else toast.error("Enter a valid bodyweight"); }} />
@@ -104,6 +105,13 @@ export function SettingsForm({ profile, email }: { profile: ProfileRow; email?: 
         <Row label="Conservative progression" sub="Require a rep in reserve before suggesting more load">
           <Switch aria-label="Conservative progression" checked={p.progression_conservative} onCheckedChange={(c) => save({ progression_conservative: c })} />
         </Row>
+        <div className="px-4 py-3">
+          <p className="text-[15px] font-medium">Maintenance muscles</p>
+          <p className="mb-3 mt-0.5 text-[12.5px] leading-snug text-muted-foreground">
+            Optional. Muscles you&apos;re keeping at maintenance volume are marked in Progress, and volume insights for them say when you&apos;re above that level. Load progression isn&apos;t affected.
+          </p>
+          <MuscleChips value={maintenanceMuscles(p)} onChange={(v) => save({ maintenance_muscles: v })} />
+        </div>
         <Link href="/exercises" className="flex min-h-14 items-center justify-between px-4 transition-colors hover:bg-muted/60">
           <span><span className="block text-[15px] font-medium">Equipment increments & exercise names</span><span className="block text-[12.5px] text-muted-foreground">Edit per exercise in the library</span></span>
           <ChevronRight className="size-4 text-muted-foreground" />

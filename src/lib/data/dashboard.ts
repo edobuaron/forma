@@ -9,7 +9,7 @@ import {
   completedSetHistory, getActiveProgram, getProfile, groupHistory, listDismissed, listExercises, listSessions,
   recentHistory, recentRecords, toDayWorkout, toStartTemplates,
 } from "./queries";
-import { defaultContext, isWorkingRow, rowSetCredit, rowVolumeKg, toExerciseConfig, toPrescription, type ExerciseRow } from "./types";
+import { defaultContext, isWorkingRow, maintenanceMuscles, rowSetCredit, rowVolumeKg, toExerciseConfig, toPrescription, type ExerciseRow } from "./types";
 
 export async function loadDashboard(db: SupabaseClient) {
   const now = new Date();
@@ -120,6 +120,7 @@ export async function loadDashboard(db: SupabaseClient) {
     ...volumeInsights(
       [...muscleWeeks.entries()].map(([week, m]) => ({ week, sets: Object.fromEntries(m) })),
       thisWeek,
+      maintenanceMuscles(profile),
     ),
   );
   // Say which sessions insights skip; listed first so it's never cut off by the limit below.

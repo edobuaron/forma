@@ -123,8 +123,12 @@ export interface WeeklyMuscleSets {
   sets: Record<string, number>;
 }
 
-/** Flags a substantial jump in weekly sets for a muscle group vs. the prior 3-week average. */
-export function volumeInsights(weeks: WeeklyMuscleSets[], currentWeek: string, excluded: string[] = []): Insight[] {
+/**
+ * Flags a substantial jump in weekly sets for a muscle group vs. the prior 3-week average.
+ * Muscles the user keeps at maintenance (profiles.maintenance_muscles) get the same check, worded
+ * against that choice. Neither version ever suggests adding sets.
+ */
+export function volumeInsights(weeks: WeeklyMuscleSets[], currentWeek: string, maintenance: readonly string[] = []): Insight[] {
   const sorted = [...weeks].sort((a, b) => a.week.localeCompare(b.week));
   const idx = sorted.findIndex((w) => w.week === currentWeek);
   // Use the most recent *complete* week to avoid flagging a week in progress.
@@ -134,15 +138,24 @@ export function volumeInsights(weeks: WeeklyMuscleSets[], currentWeek: string, e
   if (!target || prior.length < 3) return [];
   const out: Insight[] = [];
   for (const [muscle, n] of Object.entries(target.sets)) {
-    if (excluded.includes(muscle)) continue;
     const avg = prior.reduce((a, w) => a + (w.sets[muscle] ?? 0), 0) / prior.length;
     if (avg >= 2 && n >= avg * 1.5 && n - avg >= 4) {
-      out.push({
-        key: `volume:${muscle}:${target.week}`,
-        severity: "info",
-        title: `${labelFor(muscle)} volume increased substantially`,
-        detail: `${n} weekly sets vs. a ${avg.toFixed(1)}-set average over the previous three weeks. Monitor recovery before adding more sets.`,
-      });
+      const sets = `${n} weekly sets vs. a ${avg.toFixed(1)}-set average over the previous three weeks.`;
+      out.push(
+        maintenance.includes(muscle)
+          ? {
+              key: `volume:${muscle}:${target.week}`,
+              severity: "info",
+              title: `${labelFor(muscle)} volume rose above your maintenance level`,
+              detail: `${sets} You've set ${labelFor(muscle).toLowerCase()} to maintenance in Settings, so this is more than you planned for it.`,
+            }
+          : {
+              key: `volume:${muscle}:${target.week}`,
+              severity: "info",
+              title: `${labelFor(muscle)} volume increased substantially`,
+              detail: `${sets} Monitor recovery before adding more sets.`,
+            },
+      );
     }
   }
   return out;
