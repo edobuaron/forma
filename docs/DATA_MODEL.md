@@ -62,7 +62,7 @@ Sessions reference templates with `on delete set null`; they never depend on the
 - `exercises.track_sides` and `default_attachment_*` are copied into each new workout (`session_exercises.track_sides`, `attachment_*`). Sets that already hold data keep their mode when the workout's mode is switched.
 - `session_exercises.attachment_state`: NULL = not recorded, `none` = no attachment, `attachment` = `attachment_id` plus `attachment_name`, a snapshot the server takes when the attachment is chosen. Renames never rewrite past workouts.
 - `personal_records.side` keeps left and right records apart.
-- Counting, volume, comparison and progression rules: `src/lib/domain/sides.ts`. In short: a pair is one set (½ when one side is done), volume is each side's own load × reps added up, each side is compared with the same side, and a shared load increase needs both sides to earn it. Sessions with a different known attachment aren't progression evidence; "not recorded" is treated as unknown, not as different.
+- Counting, volume, comparison and progression rules: `src/lib/domain/sides.ts`. In short: a pair is one set (½ when one side is done), volume is each side's own load × reps added up, each side is compared with the same side, and a shared load increase needs both sides to earn it. Only a session with the same attachment, or one where neither session recorded an attachment, is comparison and progression evidence; "not recorded" against a recorded attachment is unknown and never matches.
 - RPCs: `ensure_starter_attachments()`, `remove_attachment(id)` (deletes when unused, archives when history uses it).
 
 ## Weighted bodyweight movements

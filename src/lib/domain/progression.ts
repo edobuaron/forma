@@ -1,6 +1,6 @@
 import { nextAvailableLoad, previousAvailableLoad } from "./loads";
 import { dominantLoad, effectiveLoad, sameLoad, workingSets } from "./sets";
-import { compatibleHistory, historyForSide, historyTogether, sessionMode, sideLabel } from "./sides";
+import { attachmentRelation, compatibleHistory, historyForSide, historyTogether, sessionMode, sideLabel } from "./sides";
 import type { AttachmentRef, ExerciseConfig, ExercisePerformance, LoggedSet, Prescription, Side, WeightUnit } from "./types";
 import { formatWeight } from "./units";
 
@@ -351,9 +351,15 @@ export function recommendFor(
   ex: ExerciseConfig, prescription: Prescription, history: ExercisePerformance[], ctx: LoggingContext, opts: Options = {},
 ): Recommendation {
   const compatible = compatibleHistory(history, ctx.attachment);
-  const setupNote = compatible.length < history.length
-    ? "Sessions with a different attachment aren't used as evidence."
-    : null;
+  const excluded = history.filter((h) => !compatible.includes(h)).map((h) => attachmentRelation(h.attachment, ctx.attachment));
+  const setupNote = excluded.length === 0 ? null
+    : excluded.every((r) => r === "unknown")
+      ? ctx.attachment?.state
+        ? "Sessions where no attachment was recorded aren't used as evidence for this setup."
+        : "Sessions with a recorded attachment aren't used as evidence while today's attachment isn't recorded."
+      : excluded.every((r) => r === "different")
+        ? "Sessions with a different attachment aren't used as evidence."
+        : "Sessions with a different or unrecorded attachment aren't used as evidence.";
   const withNote = (r: Recommendation): Recommendation => (setupNote ? { ...r, reasons: [...r.reasons, setupNote] } : r);
 
   if (!ctx.sides) {

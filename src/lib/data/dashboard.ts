@@ -1,7 +1,7 @@
 // Composes dashboard data from the data layer + domain logic. Server-side only.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sessionPoints, weekStart, weeklySetsPerMuscle } from "@/lib/domain/analytics";
-import { exerciseInsights, volumeInsights, type Insight } from "@/lib/domain/insights";
+import { exerciseInsights, insightCoverage, sidesCoverageInsight, volumeInsights, type Insight } from "@/lib/domain/insights";
 import { recommendFor, type Recommendation } from "@/lib/domain/progression";
 import type { ExerciseConfig } from "@/lib/domain/types";
 import { format } from "date-fns";
@@ -109,9 +109,12 @@ export async function loadDashboard(db: SupabaseClient) {
 
   // ----- insights -----
   const insights: Insight[] = [];
+  const coverage: Parameters<typeof sidesCoverageInsight>[0] = [];
   for (const [exId, perf] of grouped) {
     const e = exById.get(exId);
-    if (e) insights.push(...exerciseInsights(toExerciseConfig(e), perf));
+    if (!e) continue;
+    insights.push(...exerciseInsights(toExerciseConfig(e), perf));
+    coverage.push({ name: e.name, coverage: insightCoverage(perf) });
   }
   insights.push(
     ...volumeInsights(
@@ -119,6 +122,9 @@ export async function loadDashboard(db: SupabaseClient) {
       thisWeek,
     ),
   );
+  // Say which sessions insights skip; listed first so it's never cut off by the limit below.
+  const notice = sidesCoverageInsight(coverage);
+  if (notice) insights.unshift(notice);
   const visibleInsights = insights.filter((i) => !dismissed.has(`insight:${i.key}:${i.evidenceSessionId ?? ""}`));
   const enoughData = grouped.size > 0 && recent.length >= 6;
 
