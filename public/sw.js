@@ -2,7 +2,8 @@
 // Scope is deliberately modest: it makes the app installable and fast by caching static assets.
 // It does NOT provide offline workout logging — workout data lives in the database, with a
 // local autosave buffer in the page itself. Navigations are network-first with an offline notice.
-const VERSION = "forma-v1";
+// Bumping VERSION deletes every older cache on activate. v2 purges any failed response v1 may have kept.
+const VERSION = "forma-v2";
 const STATIC = `${VERSION}-static`;
 
 self.addEventListener("install", (event) => {
@@ -24,8 +25,12 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
     event.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(STATIC).then((c) => c.put(req, copy));
+        // Only keep real files. A 404 or 5xx (e.g. mid-deploy) cached under a hashed, immutable URL would be
+        // served forever, so that script never loads and every chart on the page stays blank.
+        if (res.ok && res.type === "basic") {
+          const copy = res.clone();
+          caches.open(STATIC).then((c) => c.put(req, copy));
+        }
         return res;
       })),
     );
