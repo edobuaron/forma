@@ -13,7 +13,7 @@ import { formatPerformance } from "@/components/workout/format";
 import { bestLoadForReps, bestRepsByLoad, MUSCLE_LABELS, sessionPoints } from "@/lib/domain/analytics";
 import { compareStreams } from "@/lib/domain/comparison";
 import { recordLabel, StreamComparisonList } from "@/components/workout/stream-comparison";
-import { exerciseInsights } from "@/lib/domain/insights";
+import { exerciseInsights, insightCoverage } from "@/lib/domain/insights";
 import { headline, recommendFor } from "@/lib/domain/progression";
 import { prLabel, type PRType } from "@/lib/domain/prs";
 import { workingSets } from "@/lib/domain/sets";
@@ -51,6 +51,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
   const rx = usedIn[0] ? toPrescription({ sets: usedIn[0].e.sets, rep_min: usedIn[0].e.rep_min, rep_max: usedIn[0].e.rep_max, rest_s: usedIn[0].e.rest_s }) : toPrescription(null, ex);
   const rec = recommendFor(cfg, rx, history, defaultContext(ex), { conservative: profile.progression_conservative });
   const insights = exerciseInsights(cfg, history);
+  const coverage = insightCoverage(history);
   const [last, prev] = history;
   const heaviest = ws.length ? ws.reduce((a, s) => ((s.weightKg ?? 0) > (a.weightKg ?? 0) ? s : a)) : null;
   const bestE1rm = points.reduce<number | null>((a, p) => (p.bestE1rmKg != null && (a == null || p.bestE1rmKg > a) ? p.bestE1rmKg : a), null);
@@ -98,6 +99,12 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
             <p className="mt-1 text-[19px] font-bold tracking-[-0.02em] text-accent">{headline(rec, cfg, unit)}</p>
             <ul className="mt-2 space-y-0.5 text-[13px] text-muted-foreground">{rec.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
             {insights.map((i) => <p key={i.key} className="mt-3 border-t pt-3 text-[13px]"><span className="font-medium">{i.title}.</span> <span className="text-muted-foreground">{i.detail}</span></p>)}
+            {coverage.sidesSessions > 0 && (
+              <p className="mt-3 border-t pt-3 text-[12.5px] text-muted-foreground">
+                Insights (declines, plateaus, sets to failure) cover {coverage.sessions - coverage.sidesSessions} of {coverage.sessions} sessions.
+                {" "}{coverage.sidesSessions} with left and right logged separately {coverage.sidesSessions === 1 ? "isn't" : "aren't"} analysed yet.
+              </p>
+            )}
           </Card>
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

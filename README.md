@@ -93,7 +93,7 @@ npm run test:db   # migrations + RLS + workout flow on a throwaway local Postgre
 ## Left/right tracking, attachments and removing sets (migration 011)
 
 - **Track sides separately** (exercise menu during a workout, or as an exercise default) shows Left and Right rows inside each planned set, each with its own load, reps, RIR and tick. **L → R** copies the left values to the right; it never ticks the right side for you. Progress and records are kept per side. Offered for unilateral, dumbbell and cable exercises; never for skill work.
-- **Attachments**: cable exercises show an attachment chip. Pick from a searchable list (starter list plus your own; rename and remove under *Edit attachments*). "Not recorded" and "No attachment" are different. A different attachment from last time is shown and isn't used for automatic progression.
+- **Attachments**: cable exercises show an attachment chip. Pick from a searchable list (starter list plus your own; rename and remove under *Edit attachments*). "Not recorded" and "No attachment" are different. Only a session with the same attachment (or where neither session recorded one) is used for comparisons and automatic progression; a different attachment, or "not recorded" on one side, is shown but not compared.
 - **Remove**: each exercise card has a *Remove* button that switches set rows to remove buttons; every removal offers *Undo*. Removing a planned set doesn't change the plan, so it counts as not done when you finish.
 
 Before deploying this update, apply `20261029000011_sides_and_attachments.sql` (after 009 and 010), then deploy the app. It only adds columns, a table and functions, and replaces `finish_workout`, `save_session_edit`, `start_workout_on`, `personal_record_basis` and `replace_personal_records` with compatible versions; existing data is unchanged.
@@ -104,7 +104,7 @@ Before deploying this update, apply `20261029000011_sides_and_attachments.sql` (
 - The rest timer runs while the app is open. iOS pauses web pages in the background, so the time stays correct when you return (it's wall-clock based), but there's no lock-screen alert yet. Web push is planned for Phase 3.
 - Machine and cable weights are compared only against the same exercise. If your gym has two different cable stacks, create two exercises. Attachments are recorded per workout, but a different machine setup (pulley height, bench angle) isn't.
 - Undo for a removed set lasts while its notice is on screen. The removal itself survives a reload; the Undo button doesn't.
-- Exercise insights (declines, plateaus) only read sets logged together; sessions with left and right recorded separately aren't used for them yet.
+- Exercise insights (declines, plateaus, sets to failure) only read sets logged together. Sessions with left and right recorded separately aren't analysed yet; the dashboard and exercise pages say how many were skipped. Weekly set counts include them.
 - Days and weeks are bucketed in `APP_TIMEZONE`. If you travel, dates follow that setting, not your phone.
 
 ## Project layout

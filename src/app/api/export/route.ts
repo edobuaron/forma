@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { exportSetRows, SET_CSV_COLUMNS } from "@/lib/data/export";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -52,23 +53,8 @@ export async function GET(request: NextRequest) {
     // One row per logged set, joined with workout and exercise
     const [hist, exercises] = await Promise.all([all(db, "set_history", "started_at"), all(db, "exercises")]);
     const exById = new Map(exercises.map((e) => [e.id as string, e]));
-    // A set whose sides were recorded separately becomes one row per performed side (same set_number, side = left/right).
-    // A side that wasn't performed has no row; it is never written as zero. Sets logged together have an empty side.
-    const rows = hist.filter((h) => h.status === "completed" && h.completed).flatMap((h) => {
-      const e = exById.get(h.exercise_id as string) ?? {};
-      const base = {
-        date: h.started_at, workout: h.session_name, workout_id: h.session_id, exercise: e.name, exercise_id: h.exercise_id,
-        equipment: e.equipment, load_type: e.load_type, set_number: (h.position as number) + 1, kind: h.kind, bodyweight_kg: h.bodyweight_kg,
-        attachment: h.attachment_state === "attachment" ? h.attachment_name : h.attachment_state === "none" ? "none" : "",
-        prescribed_rep_min: (h.prescribed as { rep_min?: number })?.rep_min, prescribed_rep_max: (h.prescribed as { rep_max?: number })?.rep_max,
-        set_id: h.id,
-      };
-      if (!h.sided) return [{ ...base, side: "", weight_kg: h.weight_kg, assistance_kg: h.assistance_kg, reps: h.reps, rir: h.rir }];
-      return (["left", "right"] as const).filter((s) => h[`${s}_completed`]).map((s) => ({
-        ...base, side: s, weight_kg: h[`${s}_weight_kg`], assistance_kg: h[`${s}_assistance_kg`], reps: h[`${s}_reps`], rir: h[`${s}_rir`],
-      }));
-    });
-    const cols = ["date", "workout", "exercise", "set_number", "side", "kind", "weight_kg", "assistance_kg", "reps", "rir", "bodyweight_kg", "equipment", "attachment", "load_type", "prescribed_rep_min", "prescribed_rep_max", "workout_id", "exercise_id", "set_id"];
+    const rows = exportSetRows(hist, exById);
+    const cols = SET_CSV_COLUMNS;
     return new NextResponse(toCsv(rows, cols), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="forma-sets-${stamp}.csv"` } });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

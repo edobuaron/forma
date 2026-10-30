@@ -24,3 +24,13 @@ for f in supabase/migrations/*.sql; do
   $P -d forma_upgrade_test -f "$f"
 done
 $P -d forma_upgrade_test -f supabase/tests/07_upgrade_test.sql
+
+# Upgrade to 011 with representative existing data: workouts (completed, shortened, in progress),
+# user-edited exercises, records and two accounts. Every pre-upgrade row must survive unchanged.
+$P -d postgres -c 'drop database if exists forma_upgrade_011' -c 'create database forma_upgrade_011'
+$P -d forma_upgrade_011 -f supabase/tests/00_stub_supabase.sql
+for f in supabase/migrations/*.sql; do
+  [[ "$(basename "$f")" == 20261029000011_* ]] && $P -d forma_upgrade_011 -f supabase/tests/09_pre_011_fixture.sql
+  $P -d forma_upgrade_011 -f "$f"
+done
+$P -d forma_upgrade_011 -f supabase/tests/09_upgrade_011_test.sql

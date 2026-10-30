@@ -131,21 +131,30 @@ export function sidesDiffer(s: LoggedSet, ex: Pick<ExerciseConfig, "loadType">):
 // ---------- attachments ----------
 
 /**
- * Whether two sessions' attachments allow their sets to be treated as the same setup. Two different
- * recorded attachments (or attachment vs. no attachment) are not. "Not recorded" is unknown rather
- * than different, so it doesn't break a history recorded before attachments existed; the UI says so.
+ * How two sessions' attachments relate:
+ * - "same":       the same recorded attachment (same id, renames included), or both "No attachment"
+ * - "different":  two different recorded attachments, or an attachment vs. "No attachment"
+ * - "unknown":    one side recorded, the other "Not recorded". Unknown is not a wildcard: it may or
+ *                 may not have been the same setup, so it is never treated as matching.
+ * - "unrecorded": neither recorded (e.g. history from before attachments existed, logged the same way)
  */
-export function attachmentsCompatible(a: AttachmentRef | null | undefined, b: AttachmentRef | null | undefined): boolean {
-  if (!a?.state || !b?.state) return true;
-  if (a.state !== b.state) return false;
-  return a.state === "none" || a.id === b.id;
-}
-
-export type AttachmentRelation = "same" | "different" | "unknown";
+export type AttachmentRelation = "same" | "different" | "unknown" | "unrecorded";
 
 export function attachmentRelation(prev: AttachmentRef | null | undefined, cur: AttachmentRef | null | undefined): AttachmentRelation {
+  if (!prev?.state && !cur?.state) return "unrecorded";
   if (!prev?.state || !cur?.state) return "unknown";
-  return attachmentsCompatible(prev, cur) ? "same" : "different";
+  if (prev.state !== cur.state) return "different";
+  return prev.state === "none" || prev.id === cur.id ? "same" : "different";
+}
+
+/**
+ * Whether an earlier session is evidence for automatic progression and comparisons in the current
+ * setup: only "same" and "unrecorded". A session whose attachment wasn't recorded is NOT evidence once
+ * the current workout records one (and vice versa); it is still shown in history, labelled.
+ */
+export function attachmentsCompatible(a: AttachmentRef | null | undefined, b: AttachmentRef | null | undefined): boolean {
+  const r = attachmentRelation(a, b);
+  return r === "same" || r === "unrecorded";
 }
 
 export function attachmentLabel(a: AttachmentRef | null | undefined): string {

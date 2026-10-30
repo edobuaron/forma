@@ -101,7 +101,7 @@ export function ExerciseCard(p: Props) {
   const latestDone = latest ? doneWorkingSets(latest.sets) : 0;
   const prevSummary = latest ? summarisePrevious([], latest.prescription?.sets ?? null) : null;
   const latestMode = latest ? sessionMode(latest.sets) : null;
-  const relation = latest ? attachmentRelation(latest.attachment, attachment) : "unknown";
+  const relation = latest ? attachmentRelation(latest.attachment, attachment) : "unrecorded";
   const showAttachment = item.exercise.equipment === "cable" || !!attachment.state;
   const canTrackSides = item.track_sides || sideTrackingSuitable(item.exercise) || item.sets.some((x) => x.sided);
   const assisted = ex.loadType === "assisted";
@@ -188,7 +188,9 @@ export function ExerciseCard(p: Props) {
                 {prevSummary?.prescribedSets != null && latestDone < prevSummary.prescribedSets && <span> · {latestDone}/{prevSummary.prescribedSets} sets</span>}
                 {latest.attachment?.state && <span> · {latest.attachment.state === "none" ? "no attachment" : latest.attachment.name}</span>}
                 {relation === "different" && <span className="text-foreground/80"> · different attachment, not compared</span>}
-                {relation === "unknown" && !!attachment.state && !latest.attachment?.state && <span> · attachment not recorded</span>}
+                {relation === "unknown" && (
+                  <span className="text-foreground/80"> · {latest.attachment?.state ? "no attachment recorded today" : "attachment not recorded"}, not compared</span>
+                )}
                 {latestMode && latestMode !== "mixed" && (latestMode === "sides") !== item.track_sides && (
                   <span className="text-foreground/80"> · {latestMode === "sides" ? "logged per side" : "logged together"}, not compared</span>
                 )}

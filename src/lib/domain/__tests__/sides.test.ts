@@ -5,7 +5,7 @@ import { headline, recommendFor } from "../progression";
 import { detectRecords } from "../prs";
 import { reconcileSides } from "../set-validation";
 import {
-  attachmentsCompatible, doneWorkingSets, performedSets, sessionMode, setCredit, setDone, setHasData, setPerformed, setVolumeKg,
+  attachmentRelation, attachmentsCompatible, doneWorkingSets, performedSets, sessionMode, setCredit, setDone, setHasData, setPerformed, setVolumeKg,
   sideTrackingSuitable,
 } from "../sides";
 import type { AttachmentRef, LoggedSet, SideLog } from "../types";
@@ -158,12 +158,51 @@ describe("attachments", () => {
     expect(r.action).toBe("first_time");
     expect(r.reasons.join(" ")).toMatch(/different attachment/);
   });
+  const none: AttachmentRef = { state: "none", id: null, name: null };
+  const unrecorded: AttachmentRef = { state: null, id: null, name: null };
+  const curl = ex({ name: "Cable curl", e1rmEligible: false });
+  const top = () => [set(20, 12), set(20, 12)];
+
+  it("defines all four relations", () => {
+    expect(attachmentRelation(rope, { ...rope, name: "Renamed rope" })).toBe("same");
+    expect(attachmentRelation(none, none)).toBe("same");
+    expect(attachmentRelation(rope, vHandle)).toBe("different");
+    expect(attachmentRelation(rope, none)).toBe("different");
+    expect(attachmentRelation(unrecorded, rope)).toBe("unknown");
+    expect(attachmentRelation(rope, null)).toBe("unknown");
+    expect(attachmentRelation(undefined, unrecorded)).toBe("unrecorded");
+  });
+
+  it("unknown ↔ unknown: history logged without attachments keeps driving progression", () => {
+    const r = recommendFor(curl, p, [perf(top())], { sides: false, attachment: unrecorded });
+    expect(r.action).toBe("increase_load");
+  });
+
+  it("unknown → known: 'not recorded' is not a wildcard for the attachment used today", () => {
+    const r = recommendFor(curl, p, [perf(top())], { sides: false, attachment: rope });
+    expect(r.action).toBe("first_time");
+    expect(r.reasons.join(" ")).toMatch(/no attachment was recorded/);
+  });
+
+  it("known → unknown: a recorded attachment isn't evidence while today's isn't recorded", () => {
+    const r = recommendFor(curl, p, [perf(top(), 0, { attachment: rope })], { sides: false, attachment: unrecorded });
+    expect(r.action).toBe("first_time");
+    expect(r.reasons.join(" ")).toMatch(/today's attachment isn't recorded/);
+  });
+
+  it("same attachment is evidence; an older compatible session is used when the latest differs", () => {
+    expect(recommendFor(curl, p, [perf(top(), 0, { attachment: rope })], { sides: false, attachment: rope }).action).toBe("increase_load");
+    const r = recommendFor(curl, p, [perf([set(25, 8), set(25, 8)], 0, { attachment: vHandle }), perf(top(), 7, { attachment: rope })], { sides: false, attachment: rope });
+    expect(r.action).toBe("increase_load");
+    expect(r.targetLoadKg).toBe(22.5);
+  });
+
   it("the same attachment, no attachment and not-recorded rules", () => {
     expect(attachmentsCompatible(rope, { ...rope, name: "Renamed rope" })).toBe(true);
     expect(attachmentsCompatible(rope, vHandle)).toBe(false);
     expect(attachmentsCompatible(rope, { state: "none", id: null, name: null })).toBe(false);
     expect(attachmentsCompatible({ state: "none", id: null, name: null }, { state: "none", id: null, name: null })).toBe(true);
-    expect(attachmentsCompatible(null, rope)).toBe(true);
+    expect(attachmentsCompatible(null, rope)).toBe(false);
   });
 });
 
@@ -205,5 +244,19 @@ describe("mode switching and validation", () => {
     expect(sideTrackingSuitable({ name: "Bulgarian split squat", equipment: "smith", category: "compound" })).toBe(true);
     expect(sideTrackingSuitable({ name: "Bench press", equipment: "barbell", category: "compound", weight_convention: "total" })).toBe(false);
     expect(sideTrackingSuitable({ name: "Muscle-up", equipment: "bodyweight", category: "skill" })).toBe(false);
+  });
+});
+
+describe("insight coverage", () => {
+  it("reports sessions with sides that insights skip, and nothing when there are none", async () => {
+    const { insightCoverage, sidesCoverageInsight, exerciseInsights } = await import("../insights");
+    const hist = [perf(pairs(20, [10, 10], 20, [10, 10]), 1), perf([set(20, 10), set(20, 10)], 8), perf([set(20, 10), set(20, 10)], 15)];
+    const c = insightCoverage(hist);
+    expect(c).toMatchObject({ sessions: 3, sidesSessions: 1, newestSidesSessionId: hist[0].sessionId });
+    const notice = sidesCoverageInsight([{ name: "Single-arm cable row", coverage: c }]);
+    expect(notice?.detail).toMatch(/1 exercise session logged with left and right separately \(Single-arm cable row\)/);
+    expect(sidesCoverageInsight([{ name: "Row", coverage: insightCoverage(hist.slice(1)) }])).toBeNull();
+    // The skipped session really is invisible to exerciseInsights: three sessions with sides never form a trend.
+    expect(exerciseInsights(row, [perf(pairs(20, [8], 20, [8])), perf(pairs(20, [9], 20, [9]), 7), perf(pairs(20, [11], 20, [11]), 14)])).toEqual([]);
   });
 });

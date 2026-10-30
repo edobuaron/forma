@@ -1,4 +1,5 @@
 import { dominantLoad, effectiveLoad, sameLoad, workingSets } from "./sets";
+import { sessionMode, setPerformed } from "./sides";
 import type { ExerciseConfig, ExercisePerformance } from "./types";
 import { MUSCLE_LABELS } from "./analytics";
 
@@ -149,4 +150,44 @@ export function volumeInsights(weeks: WeeklyMuscleSets[], currentWeek: string, e
 
 function labelFor(m: string) {
   return MUSCLE_LABELS[m] ?? m;
+}
+
+// ---------- coverage ----------
+
+export interface InsightCoverage {
+  /** Sessions with recorded working sets. */
+  sessions: number;
+  /** Of those, sessions with left and right logged separately: not read by exerciseInsights. */
+  sidesSessions: number;
+  /** Newest such session, so a dismissed notice returns when another one is logged. */
+  newestSidesSessionId: string | null;
+  newestSidesDate: string | null;
+}
+
+/**
+ * exerciseInsights reads only sets logged together. Sessions with left and right recorded separately
+ * are skipped (and partly skipped when a session mixes both), so their coverage is reported instead of
+ * presenting insights as if they covered everything.
+ */
+export function insightCoverage(history: ExercisePerformance[]): InsightCoverage {
+  const logged = history.filter((h) => h.sets.some((s) => s.kind === "working" && setPerformed(s)));
+  const sides = logged.filter((h) => sessionMode(h.sets) !== "together");
+  const newest = [...sides].sort((a, b) => b.date.localeCompare(a.date))[0];
+  return { sessions: logged.length, sidesSessions: sides.length, newestSidesSessionId: newest?.sessionId ?? null, newestSidesDate: newest?.date ?? null };
+}
+
+/** A notice for the insights list when some sessions aren't analysed. */
+export function sidesCoverageInsight(perExercise: { name: string; coverage: InsightCoverage }[]): Insight | null {
+  const hit = perExercise.filter((e) => e.coverage.sidesSessions > 0);
+  if (hit.length === 0) return null;
+  const n = hit.reduce((a, e) => a + e.coverage.sidesSessions, 0);
+  const names = hit.map((e) => e.name);
+  const newest = [...hit].sort((a, b) => (b.coverage.newestSidesDate ?? "").localeCompare(a.coverage.newestSidesDate ?? ""))[0].coverage.newestSidesSessionId;
+  return {
+    key: "coverage:sides",
+    severity: "info",
+    title: "Insights don't include left/right sessions yet",
+    detail: `${n} exercise session${n === 1 ? "" : "s"} logged with left and right separately (${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""}) aren't checked for declines, plateaus or sets to failure. Weekly set counts do include them.`,
+    evidenceSessionId: newest ?? undefined,
+  };
 }
