@@ -3,7 +3,7 @@ import { Award, CalendarDays, Check, ChevronRight, Lightbulb, Sparkles, Trending
 import Link from "next/link";
 import { Bars } from "@/components/charts/charts";
 import { DismissButton, NextWorkout, StartButton, TemplateGrid } from "@/components/dashboard/client";
-import { pickNext } from "@/components/dashboard/next";
+import { chooseNext } from "@/lib/next-workout";
 import { WeekStrip } from "@/components/dashboard/week-strip";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +34,8 @@ export default async function Dashboard() {
   const fmtW = (v: number) => formatWeight(v, unit);
   const loadLabel = (kg: number, lt: string) => (lt === "bodyweight" || lt === "weighted_bodyweight" ? (kg ? `+${fmtW(kg)}` : "BW") : fmtW(kg));
 
-  const next = pickNext(d.templates);
+  const choice = chooseNext(d.templates, d.recentTemplateIds);
+  const next = choice?.template ?? null;
   const others = d.templates.filter((t) => t.id !== next?.id);
   const weekDiff = d.weekCompleted - d.lastWeekCompleted;
   const thisWeekSets = d.weekly[d.weekly.length - 1].sets;
@@ -61,7 +62,7 @@ export default async function Dashboard() {
             </p>
           )}
           {next ? (
-            <NextWorkout template={next} />
+            <NextWorkout template={next} basis={choice!.basis} order={d.templates.map((t) => t.name)} />
           ) : (
             <div className="space-y-3 text-[14px] leading-relaxed text-muted-foreground">
               <h2 className="text-[24px] font-bold tracking-[-0.025em] text-foreground">Set up your first workout</h2>
@@ -77,7 +78,7 @@ export default async function Dashboard() {
           )}
           {others.length > 0 && (
             <div className="mt-6">
-              <p className="mb-2 text-[13px] font-medium text-muted-foreground">Or pick another</p>
+              <p className="mb-2 text-[13px] font-medium text-muted-foreground">Or start any other workout</p>
               <TemplateGrid templates={others} />
             </div>
           )}

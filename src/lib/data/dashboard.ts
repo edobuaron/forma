@@ -130,6 +130,8 @@ export async function loadDashboard(db: SupabaseClient) {
     weekCompleted: weekSessions.length,
     lastWeekCompleted: recent.filter((s) => weekStart(new Date(s.started_at)) === lastWeek).length,
     recent: recent.slice(0, 5),
+    /** Template of each recent completed session, newest first (for the dashboard's next-workout choice). */
+    recentTemplateIds: recent.map((s) => s.template_id),
     records,
     weekly,
     highlights: highlights.slice(0, 4),

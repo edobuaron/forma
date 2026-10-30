@@ -24,8 +24,8 @@ function lastDoneLabel(t: StartTemplate) {
   return t.lastDone ? `Last done ${formatDistanceToNowStrict(new Date(t.lastDone), { addSuffix: true })}` : "Not done yet";
 }
 
-/** The dashboard's main moment: the suggested next workout and one large start action. */
-export function NextWorkout({ template }: { template: StartTemplate }) {
+/** The dashboard's main moment: the next workout (rotation or suggestion, labelled as such) and one large start action. */
+export function NextWorkout({ template, basis, order }: { template: StartTemplate; basis: "rotation" | "suggested"; order: string[] }) {
   const { start, busy } = useStartWorkout();
   const cat = workoutCategory(template.name);
   const preview = template.exercises.slice(0, 4);
@@ -33,7 +33,7 @@ export function NextWorkout({ template }: { template: StartTemplate }) {
     <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-[13px] font-semibold text-accent">Up next</span>
+          <span className="text-[13px] font-semibold text-accent">{basis === "rotation" ? "Next in your rotation" : "Suggested next"}</span>
           <CategoryTag category={cat} />
         </div>
         <h2 className="mt-1.5 text-[36px] font-bold leading-[1.05] tracking-[-0.035em] md:text-[44px]">{template.name}</h2>
@@ -43,6 +43,11 @@ export function NextWorkout({ template }: { template: StartTemplate }) {
           <span className="font-semibold text-foreground">{template.setCount}</span> sets
           <span aria-hidden className="mx-1.5 text-border">|</span>
           {lastDoneLabel(template)}
+        </p>
+        <p className="mt-1.5 max-w-xl text-[12.5px] leading-snug text-muted-foreground">
+          {basis === "rotation"
+            ? `Your recent workouts follow your program order (${order.join(", ")}), so this one comes next.`
+            : "The workout you've gone longest without. Pick any other below if you'd rather."}
         </p>
         {preview.length > 0 && (
           <p className="mt-2 line-clamp-2 max-w-xl text-[13px] leading-relaxed text-muted-foreground">

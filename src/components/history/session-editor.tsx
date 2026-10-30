@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { Award, Check, ChevronLeft, Copy, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Award, Check, ChevronLeft, Copy, Loader2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -27,9 +27,16 @@ import {
 } from "@/lib/data/set-rows";
 import { toAttachmentRef, toExerciseConfig, toLoggedSet, type AttachmentRow, type ExerciseRow, type PersonalRecordRow, type SetLogRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
-import { cn, formatMinutes, uuid } from "@/lib/utils";
+import { cn, formatDuration, formatMinutes, uuid } from "@/lib/utils";
 
 type Ex = EditExercise;
+
+/** "3 × 6–10 · 2:00 rest", or null when nothing was planned. */
+function planText(rx: Ex["prescribed"]): string | null {
+  if (!rx?.sets) return null;
+  const reps = rx.rep_min != null && rx.rep_max != null ? (rx.rep_min === rx.rep_max ? `${rx.rep_min}` : `${rx.rep_min}–${rx.rep_max}`) : null;
+  return [`${rx.sets}${reps ? ` × ${reps}` : " sets"}`, rx.rest_s ? `${formatDuration(rx.rest_s * 1000)} rest` : null, rx.optional ? "optional" : null].filter(Boolean).join(" · ");
+}
 
 const shortOfPlan = (items: Ex[]) => items.some((e) => isShortOfPlan(e.prescribed, doneWorkingSets(e.sets.map(toLoggedSet))));
 
@@ -258,10 +265,21 @@ export function SessionEditor({ session, unit, library, records, attachments: in
       )}
 
       <div className="space-y-3">
-        {items.map((e) => (
-          <Card key={e.id} className="p-4 md:p-5">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <Link href={`/exercises/${e.exercise_id}`} className="text-[16px] font-semibold tracking-tight hover:underline">{e.exercise.name}</Link>
+        {items.map((e) => {
+          const notPerformed = !editing && !e.sets.some((s) => s.completed || setPerformed(toLoggedSet(s)));
+          const plan = planText(e.prescribed);
+          return (
+          <Card key={e.id} className={cn("p-4 md:p-5", notPerformed && "border-dashed bg-muted/30 shadow-none")}>
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <Link href={`/exercises/${e.exercise_id}`} className="text-[16px] font-semibold tracking-tight hover:underline">{e.exercise.name}</Link>
+                {!editing && plan && <p className="mt-0.5 text-[12.5px] text-muted-foreground tabular">Planned {plan}</p>}
+              </div>
+              {notPerformed && (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
+                  <Minus aria-hidden className="size-3" /> Not performed
+                </span>
+              )}
               {editing && (
                 <button aria-label="Remove exercise" onClick={() => setItems((cur) => cur.filter((x) => x.id !== e.id))} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted"><Trash2 className="size-4" /></button>
               )}
@@ -314,6 +332,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
                     </div>
                   );
                 })}
+                {notPerformed && <p className="text-[13px] text-muted-foreground">No sets logged for this exercise in this workout.</p>}
                 {e.notes && <p className="mt-2 text-[13px] text-muted-foreground">{e.notes}</p>}
               </div>
             ) : (
@@ -380,7 +399,8 @@ export function SessionEditor({ session, unit, library, records, attachments: in
               </div>
             )}
           </Card>
-        ))}
+          );
+        })}
         {editing && <Button variant="outline" className="w-full" onClick={() => setPicker(true)}><Plus /> Add exercise</Button>}
       </div>
 
