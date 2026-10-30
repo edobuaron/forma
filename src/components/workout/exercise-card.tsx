@@ -264,7 +264,7 @@ export function ExerciseCard(p: Props) {
                 <button
                   aria-label={`Remove ${setName.toLowerCase()}`}
                   onClick={() => p.onRemoveSet(s.id)}
-                  className={cn("grid h-11 w-12 place-items-center rounded-md border border-dashed text-negative hover:bg-negative/10", focusRing)}
+                  className={cn("grid h-11 w-12 place-items-center rounded-md border border-dashed border-destructive/50 text-destructive hover:bg-destructive/10", focusRing)}
                 >
                   <Trash2 className="size-[18px]" />
                 </button>
