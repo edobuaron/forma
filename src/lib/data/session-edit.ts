@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import type { ShortfallReason } from "@/lib/domain/types";
 import { sideValues, type SideColumns } from "@/lib/domain/set-validation";
 import type { SessionFull } from "./queries";
-import { normalizeSet } from "./set-rows";
+import { normalizeSet, orderSets } from "./set-rows";
 
 /** As the server stores a sided set: a side not done keeps no values. */
 function clearUndoneSides<T extends SideColumns>(s: T): T {
@@ -34,17 +34,20 @@ export function draftFromSession(s: SessionFull): SessionDraft {
     notes: s.notes ?? "",
     start: format(new Date(s.started_at), "yyyy-MM-dd'T'HH:mm"),
     minutes: s.ended_at ? Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000) : 60,
-    items: s.exercises.map((e) => ({ ...e, track_sides: !!e.track_sides, sets: e.sets.map(normalizeSet) })),
+    items: s.exercises.map((e) => ({ ...e, track_sides: !!e.track_sides, sets: orderSets(e.sets.map(normalizeSet)) })),
     shortfallReason: s.shortfall_reason ?? null,
   };
 }
 
 /** The first problem that stops the draft from saving, or null. The server repeats the set checks. */
 export function validateDraft(d: SessionDraft): string | null {
-  for (const e of d.items) for (const s of e.sets) {
+  for (const e of d.items) for (const [i, s] of e.sets.entries()) {
+    if (s.kind === "drop" && !e.sets.slice(0, i).some((p) => p.id === s.drop_parent_id && p.kind === "working")) {
+      return `${e.exercise.name}: a drop must follow its working set.`;
+    }
     const parts = s.sided
       ? (["left", "right"] as const).filter((side) => s[`${side}_completed`]).map((side) => ({ label: `${side} side`, v: sideValues(s, side) }))
-      : [{ label: "set", v: s }];
+      : [{ label: s.kind === "drop" ? "drop" : "set", v: s }];
     if (s.sided && parts.length === 0) return `${e.exercise.name}: a set tracked by side needs at least one side done. Remove the set if neither was.`;
     for (const { label, v } of parts) {
       if (v.reps == null || v.reps < 1 || !Number.isInteger(v.reps)) return `${e.exercise.name}: every ${label} needs reps (whole number ≥ 1).`;
@@ -63,7 +66,7 @@ export interface SessionEdit {
   exercises: {
     id: string; exercise_id: string; prescribed: EditExercise["prescribed"]; notes: string | null;
     track_sides: boolean; attachment_state: EditExercise["attachment_state"]; attachment_id: string | null;
-    sets: (Pick<EditExercise["sets"][number], "id" | "kind" | "weight_kg" | "assistance_kg" | "reps" | "rir" | "completed_at" | "notes"> & Partial<SideColumns>)[];
+    sets: (Pick<EditExercise["sets"][number], "id" | "kind" | "weight_kg" | "assistance_kg" | "reps" | "rir" | "completed_at" | "notes" | "drop_parent_id"> & Partial<SideColumns>)[];
   }[];
 }
 
@@ -80,7 +83,8 @@ export function toSessionEdit(d: SessionDraft): SessionEdit {
       id: e.id, exercise_id: e.exercise_id, prescribed: e.prescribed, notes: e.notes,
       track_sides: e.track_sides, attachment_state: e.attachment_state, attachment_id: e.attachment_id,
       sets: e.sets.map((s) => {
-        const base = { id: s.id, kind: s.kind, completed_at: s.completed_at, notes: s.notes };
+        // drop_parent_id is sent only for drop segments, which follow their parent in array order.
+        const base = { id: s.id, kind: s.kind, completed_at: s.completed_at, notes: s.notes, ...(s.kind === "drop" ? { drop_parent_id: s.drop_parent_id } : {}) };
         if (!s.sided) return { ...base, weight_kg: s.weight_kg, assistance_kg: s.assistance_kg, reps: s.reps, rir: s.rir };
         // A side not done is sent without values: the server stores it as not performed, never as zero.
         const side = (k: "left" | "right") => (s[`${k}_completed`] ? {

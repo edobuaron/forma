@@ -59,7 +59,7 @@ export function ExerciseProgressChart({ points, e1rm, unit, loadType, timeframe 
         <p className="py-16 text-center text-[13px] text-muted-foreground">No sessions in this timeframe. Choose a longer one above.</p>
       )}
       <p className="mt-2 text-[11.5px] text-muted-foreground">
-        One point per session ({metric === "e1rm" ? `best set's estimated 1RM — ${E1RM_FORMULA} formula, sets of ${E1RM_MAX_REPS} reps or fewer; an estimate, not a tested max` : metric === "top" ? "heaviest working set" : metric === "reps" ? "best reps at that session's top load" : metric === "volume" ? "load × reps across working sets" : "all working-set reps"}).
+        One point per session ({metric === "e1rm" ? `best set's estimated 1RM — ${E1RM_FORMULA} formula, sets of ${E1RM_MAX_REPS} reps or fewer; an estimate, not a tested max` : metric === "top" ? "heaviest working set" : metric === "reps" ? "best reps at that session's top load" : metric === "volume" ? "load × reps across working sets; warm-ups and drops not included" : "all working-set reps"}).
       </p>
     </div>
   );

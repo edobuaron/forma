@@ -31,7 +31,7 @@ export function PreviousSessionSheet({
               <div className="overflow-hidden rounded-md border">
                 {s.sets.filter((x) => x.completed).map((x, j) => (
                   <div key={j} className="flex items-center justify-between border-b px-3 py-2 text-[14px] last:border-0">
-                    <span className="w-14 text-muted-foreground">{x.kind === "warmup" ? "Warm-up" : `Set ${s.sets.filter((y) => y.kind === "working" && y.completed).indexOf(x) + 1}`}</span>
+                    <span className="w-14 text-muted-foreground">{x.kind === "warmup" ? "Warm-up" : x.kind === "drop" ? "↳ Drop" : `Set ${s.sets.filter((y) => y.kind === "working" && y.completed).indexOf(x) + 1}`}</span>
                     {x.sides ? (
                       <span className="flex flex-1 flex-col font-medium tabular">
                         {SIDES.map((sd) => {

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  copyLeftToRight, newSet, patchSide, removalKind, removeSet, restoreSet, setSideCompleted, switchMode, type SetRow,
+  addDropSegment, canToggleKind, copyLeftToRight, newSet, orderSets, patchSide, reconcileSet, removalKind, removeSet, restoreSet, setSideCompleted,
+  switchMode, type SetRow,
 } from "../set-rows";
 import { SyncQueue } from "../sync-queue";
 import { emptySideColumns, toLoggedSet } from "../types";
@@ -73,6 +74,81 @@ describe("removing a set", () => {
     expect(r.sets.map((s) => s.id)).toEqual(["a", "b", "c", "x"]);
     expect(r.sets[1]).toEqual(withSides[1]);
     expect(restoreSet(r.sets, removed!).sets).toEqual(r.sets);
+  });
+});
+
+describe("warm-up and drop rows", () => {
+  const prescribed = { sets: 2 };
+  const base = () => [
+    row("w", 0, { kind: "warmup", weight_kg: 10, reps: 12, completed: true }),
+    row("a", 1, { weight_kg: 20, reps: 10, completed: true }),
+    row("b", 2, { weight_kg: 20 }),
+  ];
+
+  it("converting warm-up ⇄ working keeps every logged value and the completion", () => {
+    const w = base()[0];
+    const asWorking = reconcileSet({ ...w, kind: "working" as const }, "external");
+    expect(asWorking).toEqual({ ...w, kind: "working" });
+    expect(reconcileSet({ ...asWorking, kind: "warmup" as const }, "external")).toEqual(w);
+  });
+
+  it("a new drop starts empty, follows its parent and its earlier drops, and takes the parent's mode", () => {
+    let r = addDropSegment(base(), "a", "d1")!;
+    r = addDropSegment(r.sets, "a", "d2")!;
+    expect(r.sets.map((s) => s.id)).toEqual(["w", "a", "d1", "d2", "b"]);
+    expect(r.sets.map((s) => s.position)).toEqual([0, 1, 2, 3, 4]);
+    expect(r.segment).toMatchObject({ kind: "drop", drop_parent_id: "a", weight_kg: null, reps: null, completed: false, sided: false });
+    expect(r.changed.map((s) => s.id).sort()).toEqual(["b", "d2"]);
+    const sidedParent = addDropSegment([sided("p", 0, { left_weight_kg: 20 })], "p", "d")!.segment;
+    expect(sidedParent).toMatchObject({ sided: true, left_weight_kg: null, right_weight_kg: null, left_completed: false, right_completed: false });
+    expect(addDropSegment(base(), "w", "x")).toBeNull(); // only a working set can have drops
+  });
+
+  it("a drop set is one planned set; removing a drop is not a planned removal", () => {
+    const r = addDropSegment(base(), "a", "d1")!;
+    const done = r.sets.map((s) => (s.id === "d1" ? { ...s, weight_kg: 15, reps: 8, completed: true } : s));
+    expect(doneWorkingSets(done.map(toLoggedSet))).toBe(1);
+    expect(removalKind(prescribed, done, "d1")).toBe("drop");
+    expect(removalKind(prescribed, done, "w")).toBe("warmup");
+  });
+
+  it("removing the parent removes its drops, and Undo puts all of them back in order", () => {
+    let r = addDropSegment(base(), "a", "d1")!;
+    r = addDropSegment(r.sets, "a", "d2")!;
+    const { sets: after, removed } = removeSet(r.sets, "a");
+    expect(after.map((s) => s.id)).toEqual(["w", "b"]);
+    expect(removed!.segments!.map((s) => s.id)).toEqual(["d1", "d2"]);
+    const back = restoreSet(after, removed!);
+    expect(back.sets.map((s) => s.id)).toEqual(["w", "a", "d1", "d2", "b"]);
+    expect(back.changed.map((s) => s.id)).toEqual(expect.arrayContaining(["a", "d1", "d2"]));
+    expect(restoreSet(back.sets, removed!).sets).toEqual(back.sets);
+  });
+
+  it("a set with drops can't become a warm-up; a drop can't change kind", () => {
+    const r = addDropSegment(base(), "a", "d1")!;
+    expect(canToggleKind(r.sets, "a")).toBe(false);
+    expect(canToggleKind(r.sets, "d1")).toBe(false);
+    expect(canToggleKind(r.sets, "b")).toBe(true);
+    expect(canToggleKind(r.sets, "w")).toBe(true);
+  });
+
+  it("orders drops after their parent whatever order they arrive in", () => {
+    const sets = [row("d2", 9, { kind: "drop", drop_parent_id: "a" }), row("a", 0), row("b", 1), row("d1", 2, { kind: "drop", drop_parent_id: "a" })];
+    expect(orderSets(sets).map((s) => s.id)).toEqual(["a", "d2", "d1", "b"]);
+  });
+
+  it("switching mode moves a drop set as a whole, and never when any part of it holds data", () => {
+    const empty = addDropSegment([row("a", 0)], "a", "d")!.sets;
+    expect(switchMode(empty, true).sets.map((s) => s.sided)).toEqual([true, true]);
+    const logged = empty.map((s) => (s.id === "d" ? { ...s, weight_kg: 10 } : s));
+    const r = switchMode(logged, true);
+    expect(r.sets.map((s) => s.sided)).toEqual([false, false]);
+    expect(r.kept).toBe(2);
+  });
+
+  it("a new drop row is saved with its parent; other new rows are never drops", () => {
+    expect(newSet("x", { kind: "working", sided: false }).drop_parent_id).toBeNull();
+    expect(newSet("x", { kind: "drop", sided: false, dropOf: "a", from: row("a", 0, { weight_kg: 50 }) })).toMatchObject({ drop_parent_id: "a", weight_kg: null });
   });
 });
 

@@ -122,7 +122,7 @@ export default async function Dashboard() {
           <CardHeader>
             <div>
               <CardTitle>Weekly volume</CardTitle>
-              <p className="mt-0.5 text-[12.5px] text-muted-foreground">Load × reps, {unit}</p>
+              <p className="mt-0.5 text-[12.5px] text-muted-foreground">Working sets, load × reps, {unit}</p>
             </div>
             <span className="text-right">
               <span className="num block text-[20px] leading-tight">{Math.round(kgToDisplay(d.weekly[d.weekly.length - 1].volume, unit)).toLocaleString("en-US")}<span className="ml-1 text-[13px] font-medium text-muted-foreground">{unit}</span></span>

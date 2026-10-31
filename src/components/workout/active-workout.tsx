@@ -20,8 +20,8 @@ import type { SessionFull } from "@/lib/data/queries";
 import { recentHistory } from "@/lib/data/queries";
 import { SyncQueue, type LocalCopy, type SyncOp, type SyncStatus } from "@/lib/data/sync-queue";
 import {
-  copyLeftToRight, newSet, normalizeSet, patchSide, plannedSets, reconcileSet, removalKind, removeSet, renumber, restoreSet,
-  setSideCompleted, switchMode, type RemovedSet, type SidePatch,
+  addDropSegment, canToggleKind, copyLeftToRight, dropSegmentsOf, newSet, normalizeSet, orderSets, patchSide, plannedSets, reconcileSet,
+  removalKind, removeSet, restoreSet, setSideCompleted, switchMode, type RemovedSet, type SidePatch,
 } from "@/lib/data/set-rows";
 import { toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription, type AttachmentRow, type ExerciseRow, type ProfileRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
@@ -57,7 +57,7 @@ function toWorkout(s: SessionFull): WExercise[] {
     attachment_state: e.attachment_state ?? null,
     attachment_id: e.attachment_id ?? null,
     attachment_name: e.attachment_name ?? null,
-    sets: e.sets.map(({ session_id: _s, session_exercise_id: _se, ...set }) => normalizeSet(set)),
+    sets: orderSets(e.sets.map(({ session_id: _s, session_exercise_id: _se, ...set }) => normalizeSet(set))),
   }));
 }
 
@@ -95,7 +95,7 @@ function applyPending(items: WExercise[], ops: SyncOp[], library: ExerciseRow[])
     }
   }
   out.sort((a, b) => a.position - b.position);
-  out.forEach((i) => i.sets.sort((a, b) => a.position - b.position));
+  out.forEach((i) => { i.sets.sort((a, b) => a.position - b.position); i.sets = orderSets(i.sets); });
   return out;
 }
 
@@ -170,7 +170,12 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
   }, [restKey]);
 
   const enqueueSet = useCallback((item: WExercise, set: WSet) => {
-    queueRef.current?.enqueue({ table: "set_logs", id: set.id, kind: "upsert", row: { ...set, session_id: sessionId, session_exercise_id: item.id } });
+    // Only drop segments carry drop_parent_id, so sets without drops also save before migration 013.
+    const { drop_parent_id, ...row } = set;
+    queueRef.current?.enqueue({
+      table: "set_logs", id: set.id, kind: "upsert",
+      row: { ...row, ...(drop_parent_id ? { drop_parent_id } : {}), session_id: sessionId, session_exercise_id: item.id },
+    });
   }, [sessionId]);
 
   const enqueueItem = useCallback((item: WExercise) => {
@@ -195,10 +200,42 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     setItems((cur) => cur.map((i) => (i.id === itemId ? fn(i) : i)));
   }
 
+  /**
+   * Normal rest after a set is done. A drop set rests once, after its last segment: no timer starts
+   * between the working set and its drops or between drops.
+   */
+  function restAfter(item: WExercise, sets: WSet[], setId: string) {
+    if (!profile.auto_rest_timer || backdated) return;
+    const s = sets.find((x) => x.id === setId);
+    if (!s || s.kind === "warmup" || !setDone(toLoggedSet(s))) return;
+    const parentId = s.kind === "drop" ? s.drop_parent_id : s.id;
+    const parent = sets.find((x) => x.id === parentId);
+    const group = parent ? [parent, ...dropSegmentsOf(sets, parent.id)] : [s];
+    if (!group.every((x) => setDone(toLoggedSet(x)))) return;
+    if (s.kind === "working" && group.length > 1) return; // drops follow right away
+    const restS = item.prescribed.rest_s ?? item.exercise.default_rest_s ?? profile.default_rest_s;
+    if (restS > 0) setRest({ endAt: Date.now() + restS * 1000, duration: restS, label: item.exercise.name });
+  }
+
+  /** A drop needs its working set (that side, when sides are tracked) done first. Returns the problem, or null. */
+  function dropBlocked(item: WExercise, set: WSet, side?: Side): string | null {
+    if (set.kind !== "drop") return null;
+    const parent = item.sets.find((x) => x.id === set.drop_parent_id);
+    const n = item.sets.filter((x) => x.kind === "working").findIndex((x) => x.id === parent?.id) + 1;
+    if (!parent) return null;
+    if (side && parent.sided ? !parent[`${side}_completed`] : !parent.completed) {
+      return `Complete ${side && parent.sided ? `the ${sideLabel[side].toLowerCase()} side of ` : ""}set ${n} before its drop.`;
+    }
+    return null;
+  }
+
   function onSetChange(item: WExercise, setId: string, patch: Partial<WSet>) {
     const set = item.sets.find((s) => s.id === setId)!;
     const next = reconcileSet({ ...set, ...patch }, item.exercise.load_type);
     if (set.completed && !next.completed && setProblem(next, item.exercise.load_type)) toast("Set marked incomplete. Fill in the required values and complete it again.");
+    if (set.completed && !next.completed && dropSegmentsOf(item.sets, setId).some((d) => d.completed)) {
+      toast("Its drops stay logged. Complete this set again before finishing, or remove the drops.");
+    }
     updateItem(item.id, (i) => ({ ...i, sets: i.sets.map((s) => (s.id === setId ? next : s)) }));
     enqueueSet(item, next);
   }
@@ -209,6 +246,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
       onSetChange(item, setId, { completed: false, completed_at: null });
       return;
     }
+    const blocked = dropBlocked(item, set);
+    if (blocked) { toast(blocked); return; }
     const rec = recommendations.get(item.id);
     const cfg = toExerciseConfig(item.exercise);
     const assisted = cfg.loadType === "assisted";
@@ -239,10 +278,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     const problem = setProblem({ ...set, ...patch }, cfg.loadType);
     if (problem) { toast(problem); return; }
     onSetChange(item, setId, patch);
-    if (profile.auto_rest_timer && !backdated && set.kind === "working") {
-      const restS = item.prescribed.rest_s ?? item.exercise.default_rest_s ?? profile.default_rest_s;
-      if (restS > 0) setRest({ endAt: Date.now() + restS * 1000, duration: restS, label: item.exercise.name });
-    }
+    restAfter(item, item.sets.map((s) => (s.id === setId ? { ...s, ...patch } : s)), setId);
   }
 
   // ---------- sides ----------
@@ -263,6 +299,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
       enqueueSet(item, next);
       return;
     }
+    const blocked = dropBlocked(item, set, side);
+    if (blocked) { toast(blocked); return; }
     // Suggestions for this side only: its own recommendation, then the same side last time.
     const rec = recommendations.get(item.id)?.sides?.[side];
     const sidedIdx = item.sets.filter((s) => s.kind === "working" && s.sided).findIndex((s) => s.id === setId);
@@ -288,10 +326,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     updateItem(item.id, (i) => ({ ...i, sets: i.sets.map((s) => (s.id === setId ? next : s)) }));
     enqueueSet(item, next);
     // Rest once the pair is done, not between sides.
-    if (profile.auto_rest_timer && !backdated && working && setDone(toLoggedSet(next))) {
-      const restS = item.prescribed.rest_s ?? item.exercise.default_rest_s ?? profile.default_rest_s;
-      if (restS > 0) setRest({ endAt: Date.now() + restS * 1000, duration: restS, label: item.exercise.name });
-    }
+    restAfter(item, item.sets.map((s) => (s.id === setId ? next : s)), setId);
   }
 
   function onCopyLeftToRight(item: WExercise, setId: string) {
@@ -339,15 +374,27 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     });
   }
 
+  function onAddDrop(item: WExercise, parentId: string) {
+    const r = addDropSegment(item.sets, parentId, uuid());
+    if (!r) return;
+    const next = { ...item, sets: r.sets };
+    updateItem(item.id, () => next);
+    r.changed.forEach((s) => enqueueSet(next, s));
+    // The sequence continues: the rest that started with the working set waits until the last drop.
+    if (rest?.label === item.exercise.name) setRest(null);
+  }
+
   function onRemoveSet(item: WExercise, setId: string) {
     const meaning = removalKind(item.prescribed, item.sets, setId);
     const { sets, removed } = removeSet(item.sets, setId);
     if (!removed) return;
     updateItem(item.id, (i) => ({ ...i, sets: removeSet(i.sets, setId).sets }));
-    queueRef.current?.enqueue({ table: "set_logs", id: setId, kind: "delete" });
+    for (const s of [removed.set, ...(removed.segments ?? [])]) queueRef.current?.enqueue({ table: "set_logs", id: s.id, kind: "delete" });
     const planned = plannedSets(item.prescribed, item.sets);
     const done = doneWorkingSets(sets.map(toLoggedSet));
-    toast(meaning === "planned" ? "Planned set removed" : "Extra set removed", {
+    const drops = removed.segments?.length ?? 0;
+    const title = meaning === "planned" ? "Planned set removed" : meaning === "drop" ? "Drop removed" : meaning === "warmup" ? "Warm-up removed" : "Extra set removed";
+    toast(drops ? `${title} with ${drops} drop${drops === 1 ? "" : "s"}` : title, {
       description: meaning === "planned"
         ? `${item.exercise.name}: ${done} of ${planned} planned sets done. The plan is unchanged, so the removed set counts as not done.`
         : undefined,
@@ -366,8 +413,10 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     r.changed.forEach((s) => enqueueSet(next, s));
   }
 
+  /** Warm-up ⇄ working. Logged values and completion are kept as they are. */
   function onToggleKind(item: WExercise, setId: string) {
     const s = item.sets.find((x) => x.id === setId)!;
+    if (!canToggleKind(item.sets, setId)) { toast("Remove this set's drops before marking it as a warm-up."); return; }
     onSetChange(item, setId, { kind: s.kind === "warmup" ? "working" : "warmup" });
   }
 
@@ -434,7 +483,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
       }
       const next: WExercise = {
         ...old, exercise: ex, exercise_id: ex.id, substituted_for: old.substituted_for ?? old.exercise_id,
-        sets: old.sets.map((s) => ({ ...newSet(s.id, { kind: s.kind, sided: s.sided }), position: s.position })),
+        sets: old.sets.map((s) => ({ ...newSet(s.id, { kind: s.kind, sided: s.sided, dropOf: s.drop_parent_id }), position: s.position })),
       };
       updateItem(old.id, () => next);
       enqueueItem(next);
@@ -486,6 +535,10 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
   async function finish() {
     for (const item of items) for (const set of item.sets) {
       if (!set.completed) continue;
+      if (set.kind === "drop" && !item.sets.find((x) => x.id === set.drop_parent_id)?.completed) {
+        toast.error(`${item.exercise.name}: a drop is logged under a set that isn't completed. Complete the set or remove the drop.`);
+        return;
+      }
       const problems = set.sided
         ? (["left", "right"] as Side[]).filter((sd) => set[`${sd}_completed`]).map((sd) => setProblem(sideValues(set, sd), item.exercise.load_type))
         : [setProblem(set, item.exercise.load_type)];
@@ -621,6 +674,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
                 onPickAttachment={() => setAttachmentFor(item.id)}
                 onCompleteSet={(id) => onCompleteSet(item, id)}
                 onAddSet={(k) => onAddSet(item, k)}
+                onAddDrop={(id) => onAddDrop(item, id)}
                 onRemoveSet={(id) => onRemoveSet(item, id)}
                 onToggleKind={(id) => onToggleKind(item, id)}
                 onNotes={(v) => onNotes(item, v)}

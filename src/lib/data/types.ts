@@ -170,6 +170,8 @@ export interface SetLogRow extends SideColumns {
   completed: boolean;
   completed_at: string | null;
   notes: string | null;
+  /** The working set a drop segment continues; null otherwise (migration 013). */
+  drop_parent_id?: string | null;
 }
 
 export interface SetHistoryRow extends Omit<SideColumns, "left_completed_at" | "right_completed_at"> {
@@ -195,6 +197,7 @@ export interface SetHistoryRow extends Omit<SideColumns, "left_completed_at" | "
   attachment_state: AttachmentState;
   attachment_id: string | null;
   attachment_name: string | null;
+  drop_parent_id?: string | null;
 }
 
 export interface PersonalRecordRow {
@@ -301,12 +304,26 @@ export function rowSetCredit(r: CountRow): number {
   return r.sided ? (Number(!!r.left_completed) + Number(!!r.right_completed)) / 2 : 1;
 }
 
-/** Load × reps; a pair adds each performed side's own work. Rows logged together are unchanged from before sides existed. */
-export function rowVolumeKg(r: CountRow): number {
-  if (!isWorkingRow(r)) return 0;
+function rowWorkKg(r: CountRow): number {
   if (!r.sided) return Math.max(0, Number(r.weight_kg ?? 0)) * (r.reps ?? 0);
   return (["left", "right"] as const).reduce((a, k) =>
     a + (r[`${k}_completed`] ? Math.max(0, Number(r[`${k}_weight_kg`] ?? 0)) * (r[`${k}_reps`] ?? 0) : 0), 0);
+}
+
+/** Working-set load × reps; a pair adds each performed side's own work. Drop segments and warm-ups are never included. */
+export function rowVolumeKg(r: CountRow): number {
+  return isWorkingRow(r) ? rowWorkKg(r) : 0;
+}
+
+/** A completed drop segment with recorded work (migration 013). */
+export function isDropRow(r: CountRow): boolean {
+  if (r.kind !== "drop" || !r.completed) return false;
+  return r.sided ? !!(r.left_completed || r.right_completed) : (r.reps ?? 0) > 0;
+}
+
+/** Load × reps of a completed drop segment. Reported as drop volume, next to working volume, never inside it. */
+export function rowDropVolumeKg(r: CountRow): number {
+  return isDropRow(r) ? rowWorkKg(r) : 0;
 }
 
 /** The logging context a new workout would start in for this exercise (its defaults). */

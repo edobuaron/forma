@@ -1,12 +1,13 @@
 "use client";
 import { format } from "date-fns";
-import { Award, Check, ChevronLeft, Copy, Loader2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Award, Check, ChevronLeft, Copy, CornerDownRight, Flame, Loader2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/dropdown";
 import { Input, Textarea } from "@/components/ui/input";
 import { AttachmentChip, AttachmentPicker } from "@/components/workout/attachment-picker";
 import { formatSetLong, loadColumnLabel } from "@/components/workout/format";
@@ -16,14 +17,16 @@ import { ShortfallReasonField } from "@/components/workout/shortfall-reason";
 import { prLabel, type PRType } from "@/lib/domain/prs";
 import { recordLabel } from "@/components/workout/stream-comparison";
 import { isShortOfPlan, shortfallLabel } from "@/lib/domain/shortfall";
-import { doneWorkingSets, setPerformed, setVolumeKg, sideLabel, sideShort, SIDES, sideAsSet, sideTrackingSuitable } from "@/lib/domain/sides";
+import { dropSegmentsDone, volumeBreakdown, warmupsDone } from "@/lib/domain/drops";
+import { doneWorkingSets, setPerformed, sideLabel, sideShort, SIDES, sideAsSet, sideTrackingSuitable } from "@/lib/domain/sides";
 import type { AttachmentRef, ShortfallReason, Side, WeightUnit } from "@/lib/domain/types";
 import { displayToKg, formatVolume, kgToDisplay } from "@/lib/domain/units";
 import { deleteSession, recomputeRecords, saveSessionEdit } from "@/lib/data/mutations";
 import type { SessionFull } from "@/lib/data/queries";
 import { draftFromSession, savedDraft, toSessionEdit, validateDraft, type EditExercise, type SessionDraft } from "@/lib/data/session-edit";
 import {
-  copyLeftToRight, newSet, patchSide, removalKind, removeSet, restoreSet, setSideCompleted, switchMode, type RemovedSet, type SidePatch,
+  addDropSegment, canToggleKind, copyLeftToRight, dropSegmentsOf, newSet, patchSide, removalKind, removeSet, restoreSet, setSideCompleted, switchMode,
+  type RemovedSet, type SidePatch,
 } from "@/lib/data/set-rows";
 import { toAttachmentRef, toExerciseConfig, toLoggedSet, type AttachmentRow, type ExerciseRow, type PersonalRecordRow, type SetLogRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
@@ -39,6 +42,25 @@ function planText(rx: Ex["prescribed"]): string | null {
 }
 
 const shortOfPlan = (items: Ex[]) => items.some((e) => isShortOfPlan(e.prescribed, doneWorkingSets(e.sets.map(toLoggedSet))));
+
+/** Display labels of a set list: working sets numbered, warm-ups "W", drops numbered within their set. */
+function setLabels(sets: Pick<SetLogRow, "id" | "kind" | "drop_parent_id">[]) {
+  const out = new Map<string, { short: string; name: string; drop: number }>();
+  const parentNo = new Map<string, number>();
+  const dropNo = new Map<string, number>();
+  let n = 0;
+  for (const s of sets) {
+    if (s.kind === "warmup") out.set(s.id, { short: "W", name: "Warm-up set", drop: 0 });
+    else if (s.kind === "working") { n++; parentNo.set(s.id, n); out.set(s.id, { short: String(n), name: `Set ${n}`, drop: 0 }); }
+    else {
+      const p = s.drop_parent_id ?? "";
+      const k = (dropNo.get(p) ?? 0) + 1;
+      dropNo.set(p, k);
+      out.set(s.id, { short: String(k), name: `Set ${parentNo.get(p) ?? "?"} drop ${k}`, drop: k });
+    }
+  }
+  return out;
+}
 
 const RECORDS_FAILED = "personal records couldn't be refreshed. They'll update the next time you save a workout with these exercises.";
 
@@ -79,11 +101,17 @@ export function SessionEditor({ session, unit, library, records, attachments: in
   }, [session]);
 
   const stats = useMemo(() => {
-    const ws = saved.items.flatMap((e) => e.sets.filter((s) => s.kind === "working").map((s) => ({ s: toLoggedSet(s), cfg: toExerciseConfig(e.exercise) })));
-    return {
-      sets: ws.filter(({ s }) => setPerformed(s)).length,
-      volume: ws.reduce((a, { s, cfg }) => a + setVolumeKg(s, cfg), 0),
-    };
+    let sets = 0, warmups = 0, drops = 0, workingKg = 0, dropKg = 0;
+    for (const e of saved.items) {
+      const logged = e.sets.map(toLoggedSet);
+      const v = volumeBreakdown(logged, toExerciseConfig(e.exercise));
+      sets += logged.filter((s) => s.kind === "working" && setPerformed(s)).length;
+      warmups += warmupsDone(logged);
+      drops += dropSegmentsDone(logged);
+      workingKg += v.workingKg;
+      dropKg += v.dropKg;
+    }
+    return { sets, warmups, drops, workingKg, dropKg };
   }, [saved]);
 
   function patchSet(exId: string, setId: string, patch: Partial<SetLogRow>) {
@@ -111,14 +139,29 @@ export function SessionEditor({ session, unit, library, records, attachments: in
     }));
   }
 
-  function addSet(e: Ex) {
-    const last = e.sets[e.sets.length - 1];
-    const base = newSet(uuid(), { kind: "working", sided: e.track_sides, from: last });
+  function addSet(e: Ex, kind: "working" | "warmup" = "working") {
+    const last = [...e.sets].reverse().find((x) => x.kind === kind) ?? null;
+    const sided = kind === "working" && e.track_sides;
+    const base = newSet(uuid(), { kind, sided, from: last });
     const s: SetLogRow = {
       ...base, session_id: session.id, session_exercise_id: e.id, position: e.sets.length,
-      reps: e.track_sides ? null : last?.reps ?? null, completed: true, completed_at: session.started_at,
+      reps: sided ? null : last?.reps ?? null, completed: true, completed_at: session.started_at,
     };
-    patchItem(e.id, (x) => ({ ...x, sets: [...x.sets, s] }));
+    // Warm-ups go before the first working set.
+    patchItem(e.id, (x) => {
+      const at = kind === "warmup" ? x.sets.findIndex((y) => y.kind !== "warmup") : -1;
+      const sets = [...x.sets];
+      sets.splice(at < 0 ? sets.length : at, 0, s);
+      return { ...x, sets: sets.map((y, i) => ({ ...y, position: i })) };
+    });
+  }
+
+  /** A new drop after a working set: empty values, the parent's mode, marked done once its values are filled in. */
+  function addDrop(e: Ex, parentId: string) {
+    patchItem(e.id, (x) => {
+      const r = addDropSegment(x.sets, parentId, uuid(), { session_id: session.id, session_exercise_id: e.id, completed: true, completed_at: session.started_at } as Partial<SetLogRow>);
+      return r ? { ...x, sets: r.sets } : x;
+    });
   }
 
   function deleteSet(e: Ex, setId: string) {
@@ -126,7 +169,8 @@ export function SessionEditor({ session, unit, library, records, attachments: in
     const { removed } = removeSet(e.sets, setId);
     if (!removed) return;
     patchItem(e.id, (x) => ({ ...x, sets: removeSet(x.sets, setId).sets }));
-    toast(meaning === "planned" ? "Set removed. The plan is unchanged, so the workout shows fewer sets than planned." : "Set removed", {
+    const drops = removed.segments?.length ? ` with ${removed.segments.length} drop${removed.segments.length === 1 ? "" : "s"}` : "";
+    toast(meaning === "planned" ? `Set removed${drops}. The plan is unchanged, so the workout shows fewer sets than planned.` : meaning === "drop" ? "Drop removed" : `Set removed${drops}`, {
       duration: 8000,
       action: { label: "Undo", onClick: () => patchItem(e.id, (x) => ({ ...x, sets: restoreSet(x.sets, removed as RemovedSet<SetLogRow>).sets })) },
     });
@@ -230,7 +274,12 @@ export function SessionEditor({ session, unit, library, records, attachments: in
             </div>
           ) : (
             <p className="mt-1 text-[14px] text-muted-foreground tabular">
-              {format(new Date(saved.start), "EEEE d MMMM yyyy · HH:mm")} · {formatMinutes(saved.minutes * 60000)} · {stats.sets} sets · {formatVolume(stats.volume, unit)}
+              {format(new Date(saved.start), "EEEE d MMMM yyyy · HH:mm")} · {formatMinutes(saved.minutes * 60000)} · {stats.sets} sets
+              {stats.drops > 0 ? ` · ${stats.drops} drop${stats.drops === 1 ? "" : "s"}` : ""}
+              {stats.warmups > 0 ? ` · ${stats.warmups} warm-up${stats.warmups === 1 ? "" : "s"}` : ""}
+              {" · "}{stats.dropKg > 0
+                ? `total volume ${formatVolume(stats.workingKg + stats.dropKg, unit)} (working ${formatVolume(stats.workingKg, unit)} + drops ${formatVolume(stats.dropKg, unit)})`
+                : formatVolume(stats.workingKg, unit)}
             </p>
           )}
         </div>
@@ -300,13 +349,15 @@ export function SessionEditor({ session, unit, library, records, attachments: in
             )}
             {!editing ? (
               <div className="space-y-1">
-                {e.sets.filter((s) => s.completed).map((s) => {
-                  const n = s.kind === "warmup" ? "W" : e.sets.filter((x) => x.kind === "working" && x.completed).indexOf(s) + 1;
+                {(() => { const labels = setLabels(e.sets.filter((s) => s.completed)); return e.sets.filter((s) => s.completed).map((s) => {
+                  const lb = labels.get(s.id)!;
+                  const isDrop = s.kind === "drop";
+                  const n = isDrop ? <span className="inline-flex items-center text-accent" aria-label={lb.name}><CornerDownRight aria-hidden className="size-3" />{lb.short}</span> : lb.short;
                   const ls = toLoggedSet(s);
                   if (s.sided) {
                     return (
-                      <div key={s.id} className="flex items-start text-[14px]">
-                        <span className="mr-3 inline-block w-4 shrink-0 text-muted-foreground tabular">{n}</span>
+                      <div key={s.id} className={cn("flex items-start text-[14px]", isDrop && "ml-4 border-l-2 border-dashed border-accent/40 pl-2")}>
+                        <span className="mr-3 inline-block w-6 shrink-0 text-muted-foreground tabular">{n}</span>
                         <span className="flex flex-col gap-0.5 tabular">
                           {SIDES.map((side) => {
                             const v = sideAsSet(ls, side);
@@ -323,15 +374,17 @@ export function SessionEditor({ session, unit, library, records, attachments: in
                     );
                   }
                   return (
-                    <div key={s.id} className="flex items-center justify-between text-[14px]">
+                    <div key={s.id} className={cn("flex items-center justify-between text-[14px]", isDrop && "ml-4 border-l-2 border-dashed border-accent/40 pl-2")}>
                       <span className="tabular">
-                        <span className="mr-3 inline-block w-4 text-muted-foreground">{n}</span>
+                        <span className="mr-3 inline-block w-6 text-muted-foreground">{n}</span>
                         {formatSetLong(ls, e.exercise.load_type, unit)}
+                        {isDrop && <span className="ml-2 text-[12px] text-muted-foreground">drop</span>}
+                        {s.kind === "warmup" && <span className="ml-2 text-[12px] text-muted-foreground">warm-up</span>}
                       </span>
                       {s.rir != null && <span className="text-[12px] text-muted-foreground">RIR {Number(s.rir)}</span>}
                     </div>
                   );
-                })}
+                }); })()}
                 {notPerformed && <p className="text-[13px] text-muted-foreground">No sets logged for this exercise in this workout.</p>}
                 {e.notes && <p className="mt-2 text-[13px] text-muted-foreground">{e.notes}</p>}
               </div>
@@ -340,21 +393,35 @@ export function SessionEditor({ session, unit, library, records, attachments: in
                 <div className="grid grid-cols-[40px_1fr_1fr_0.8fr_36px] gap-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <span>Set</span><span className="text-center">{loadColumnLabel(e.exercise.load_type, unit)}</span><span className="text-center">Reps</span><span className="text-center">RIR</span><span />
                 </div>
-                {e.sets.map((s, i) => {
+                {(() => { const labels = setLabels(e.sets); return e.sets.map((s) => {
                   const assisted = e.exercise.load_type === "assisted";
                   const loadPatch = (v: number | null) => (assisted ? { assistance_kg: v == null ? null : displayToKg(v, unit) } : { weight_kg: v == null ? null : displayToKg(v, unit) });
-                  const label = s.kind === "warmup" ? "Warm-up set" : `Set ${i + 1}`;
+                  const lb = labels.get(s.id)!;
+                  const label = lb.name;
+                  const isDrop = s.kind === "drop";
+                  const hasDrops = dropSegmentsOf(e.sets, s.id).length > 0;
                   const kindButton = (
-                    <button onClick={() => patchSet(e.id, s.id, { kind: s.kind === "warmup" ? "working" : "warmup" })} className="h-9 rounded-sm text-[13px] font-semibold text-muted-foreground hover:bg-muted" title="Toggle warm-up" aria-label={`${label}: toggle warm-up`}>
-                      {s.kind === "warmup" ? "W" : i + 1}
-                    </button>
+                    <Menu>
+                      <MenuTrigger aria-label={`${label} options`} className={cn("h-9 w-full rounded-sm text-[13px] font-semibold hover:bg-muted", isDrop ? "text-accent" : s.kind === "warmup" ? "text-pending" : "text-muted-foreground")}>
+                        {isDrop ? <span className="inline-flex items-center"><CornerDownRight aria-hidden className="size-3" />{lb.short}</span> : lb.short}
+                      </MenuTrigger>
+                      <MenuContent align="start">
+                        {s.kind === "working" && <MenuItem onSelect={() => addDrop(e, s.id)}><CornerDownRight /> {hasDrops ? "Add another drop" : "Make it a drop set"}</MenuItem>}
+                        {!isDrop && (
+                          <MenuItem disabled={!canToggleKind(e.sets, s.id)} onSelect={() => patchSet(e.id, s.id, { kind: s.kind === "warmup" ? "working" : "warmup" })}>
+                            {s.kind === "warmup" ? "Mark as working set" : hasDrops ? "Mark as warm-up (remove drops first)" : "Mark as warm-up"}
+                          </MenuItem>
+                        )}
+                        <MenuItem destructive onSelect={() => deleteSet(e, s.id)}><Trash2 /> {isDrop ? "Remove drop" : hasDrops ? "Remove set and its drops" : "Remove set"}</MenuItem>
+                      </MenuContent>
+                    </Menu>
                   );
                   const deleteButton = (
                     <button aria-label={`Remove ${label.toLowerCase()}`} onClick={() => deleteSet(e, s.id)} className="grid size-9 place-items-center rounded-full text-muted-foreground hover:bg-muted"><X className="size-4" /></button>
                   );
                   if (s.sided) {
                     return (
-                      <div key={s.id} role="group" aria-label={`${label}, left and right`} className="border-t py-1 first:border-t-0">
+                      <div key={s.id} role="group" aria-label={`${label}, left and right`} className={cn("border-t py-1 first:border-t-0", isDrop && "ml-4 border-l-2 border-l-accent/40 border-dashed pl-2")}>
                         <div className="flex items-center gap-2">
                           <span className="w-10">{kindButton}</span>
                           <span className="flex-1 text-[12px] text-muted-foreground">Tick each side done</span>
@@ -385,7 +452,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
                     );
                   }
                   return (
-                    <div key={s.id} className="grid grid-cols-[40px_1fr_1fr_0.8fr_36px] items-center gap-2 py-1">
+                    <div key={s.id} className={cn("grid grid-cols-[40px_1fr_1fr_0.8fr_36px] items-center gap-2 py-1", isDrop && "ml-4 border-l-2 border-dashed border-accent/40 pl-2")}>
                       {kindButton}
                       <NumberField ariaLabel={`${label} load`} value={(assisted ? s.assistance_kg : s.weight_kg) == null ? null : kgToDisplay(Number(assisted ? s.assistance_kg : s.weight_kg), unit)} max={unit === "kg" ? 1000 : 2200}
                         onCommit={(v) => patchSet(e.id, s.id, loadPatch(v))} />
@@ -394,8 +461,11 @@ export function SessionEditor({ session, unit, library, records, attachments: in
                       {deleteButton}
                     </div>
                   );
-                })}
-                <button onClick={() => addSet(e)} className="mt-1 flex h-9 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-muted-foreground hover:bg-muted"><Plus className="size-4" /> Add set</button>
+                }); })()}
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <button onClick={() => addSet(e)} className="flex h-9 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-muted-foreground hover:bg-muted"><Plus className="size-4" /> Add set</button>
+                  <button onClick={() => addSet(e, "warmup")} className="flex h-9 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-muted-foreground hover:bg-muted"><Flame className="size-4" /> Warm-up<span className="sr-only"> set</span></button>
+                </div>
               </div>
             )}
           </Card>

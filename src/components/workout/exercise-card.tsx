@@ -1,6 +1,6 @@
 "use client";
 import {
-  ArrowDown, ArrowUp, Check, ChevronDown, Copy, History, Info, Link2, MoreHorizontal, NotebookPen, Plus, Repeat, Trash2, X,
+  ArrowDown, ArrowUp, Check, ChevronDown, Copy, CornerDownRight, Flame, History, Info, Link2, MoreHorizontal, NotebookPen, Plus, Repeat, Trash2, X,
 } from "lucide-react";
 import { useId, useState } from "react";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
@@ -8,13 +8,14 @@ import { Textarea } from "@/components/ui/input";
 import { compareSet, previousCounterpart, previousFor, summarisePrevious } from "@/lib/domain/comparison";
 import { headline, type Recommendation } from "@/lib/domain/progression";
 import { workingSets } from "@/lib/domain/sets";
+import { dropSegmentsDone } from "@/lib/domain/drops";
 import {
   attachmentRelation, compatibleHistory, doneWorkingSets, performedSets, sessionMode, setDone, setPerformed, sideAsSet, sideLabel,
   sideShort, sideTrackingSuitable, SIDES,
 } from "@/lib/domain/sides";
 import type { ExerciseConfig, ExercisePerformance, LoggedSet, Side, WeightUnit } from "@/lib/domain/types";
 import { displayToKg, kgToDisplay } from "@/lib/domain/units";
-import { plannedSets } from "@/lib/data/set-rows";
+import { canToggleKind, dropSegmentsOf, plannedSets } from "@/lib/data/set-rows";
 import { toAttachmentRef, toLoggedSet } from "@/lib/data/types";
 import { cn, formatDuration } from "@/lib/utils";
 import { ExerciseIcon } from "@/components/ui/category";
@@ -46,6 +47,8 @@ interface Props {
   onToggleSides: () => void;
   onPickAttachment: () => void;
   onAddSet: (kind: "working" | "warmup") => void;
+  /** Add a drop segment after a working set (and its earlier segments). */
+  onAddDrop: (parentId: string) => void;
   onRemoveSet: (setId: string) => void;
   onToggleKind: (setId: string) => void;
   onNotes: (notes: string) => void;
@@ -64,6 +67,7 @@ const SET_GRID = {
 const focusRing = "outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const footerButton = cn("flex h-11 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] @md:px-3 font-medium text-muted-foreground hover:bg-muted", focusRing);
 const activeRow = "shadow-[inset_3px_0_0_var(--accent)] bg-accent-soft";
+const dropRail = "ml-5 rounded-l-none border-l-2 border-dashed border-accent/40 @md:ml-6";
 const iconButton = cn("grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted", focusRing);
 
 export function ExerciseCard(p: Props) {
@@ -112,8 +116,14 @@ export function ExerciseCard(p: Props) {
   const done = doneWorkingSets(logged);
   const total = plannedSets(rx, item.sets);
   const complete = total > 0 && done >= total;
+  const warmups = item.sets.filter((x) => x.kind === "warmup").length;
+  const drops = item.sets.filter((x) => x.kind === "drop").length;
+  const dropsDone = dropSegmentsDone(logged);
   let workingIdx = -1;
   let sidedIdx = -1;
+  // Working-set number of each parent, and the running segment number within it.
+  const parentNo = new Map<string, number>();
+  const dropNo = new Map<string, number>();
 
   const hasActive = item.sets.some((s) => s.id === p.activeSetId);
   return (
@@ -141,6 +151,13 @@ export function ExerciseCard(p: Props) {
             {rx.optional ? " · optional" : ""}
             {item.track_sides && " · L/R"}
           </p>
+          {(warmups > 0 || drops > 0) && (
+            <p className="text-[12.5px] text-muted-foreground tabular">
+              {warmups > 0 && <span>{warmups} warm-up{warmups === 1 ? "" : "s"}, not counted</span>}
+              {warmups > 0 && drops > 0 && " · "}
+              {drops > 0 && <span>{dropsDone}/{drops} drop{drops === 1 ? "" : "s"} done</span>}
+            </p>
+          )}
         </button>
         <button aria-label={`Previous sessions: ${ex.name}`} aria-haspopup="dialog" onClick={() => setShowPrev(true)} className={cn("-mt-1", iconButton)}>
           <History className="size-[18px]" strokeWidth={1.8} />
@@ -185,6 +202,7 @@ export function ExerciseCard(p: Props) {
               <button aria-haspopup="dialog" onClick={() => setShowPrev(true)} className={cn("-mx-1 block min-h-11 w-[calc(100%+0.5rem)] rounded-md px-1 py-1.5 text-left text-[13px] text-muted-foreground", focusRing)}>
                 <span className="font-semibold text-foreground/85">Last time</span>{" "}
                 <span className="tabular">{formatPerformance(latest.sets, ex.loadType, unit, workingSets(latest.sets, ex))}</span>
+                {dropSegmentsDone(latest.sets) > 0 && <span> · {dropSegmentsDone(latest.sets)} drop{dropSegmentsDone(latest.sets) === 1 ? "" : "s"}</span>}
                 {prevSummary?.prescribedSets != null && latestDone < prevSummary.prescribedSets && <span> · {latestDone}/{prevSummary.prescribedSets} sets</span>}
                 {latest.attachment?.state && <span> · {latest.attachment.state === "none" ? "no attachment" : latest.attachment.name}</span>}
                 {relation === "different" && <span className="text-foreground/80"> · different attachment, not compared</span>}
@@ -241,26 +259,51 @@ export function ExerciseCard(p: Props) {
               {showRir && <span className="text-center">RIR</span>}
               <span />
             </div>
-            {item.sets.map((s) => {
+            {item.sets.map((s, si) => {
               const isWarm = s.kind === "warmup";
-              if (!isWarm) workingIdx++;
-              if (!isWarm && s.sided) sidedIdx++;
+              const isDrop = s.kind === "drop";
+              if (s.kind === "working") workingIdx++;
+              if (s.kind === "working" && s.sided) sidedIdx++;
               const idx = workingIdx;
-              const setName = isWarm ? "Warm-up set" : `Set ${idx + 1}`;
+              if (s.kind === "working") parentNo.set(s.id, idx + 1);
+              const parentId = isDrop ? s.drop_parent_id ?? "" : s.id;
+              const dropK = isDrop ? (dropNo.get(parentId) ?? 0) + 1 : 0;
+              if (isDrop) dropNo.set(parentId, dropK);
+              const setName = isWarm ? "Warm-up set" : isDrop ? `Set ${parentNo.get(parentId) ?? "?"} drop ${dropK}` : `Set ${idx + 1}`;
               const active = s.id === p.activeSetId;
+              const hasDrops = s.kind === "working" && dropSegmentsOf(item.sets, s.id).length > 0;
+              const nextSet = item.sets[si + 1];
+              const lastOfGroup = (isDrop || hasDrops) && !(nextSet?.kind === "drop" && nextSet.drop_parent_id === parentId);
               const setMenu = (className?: string) => (
                 <Menu>
                   <MenuTrigger
                     aria-label={`${setName} options`}
-                    className={cn("h-11 rounded-sm text-center text-[14px] font-semibold tabular hover:bg-muted", focusRing, isWarm ? "text-pending" : "text-muted-foreground", className)}
+                    className={cn("h-11 rounded-sm text-center text-[14px] font-semibold tabular hover:bg-muted", focusRing, isWarm ? "text-pending" : isDrop ? "text-accent" : "text-muted-foreground", className)}
                   >
-                    {isWarm ? "W" : idx + 1}
+                    {isWarm ? "W" : isDrop ? <span className="inline-flex items-center"><CornerDownRight aria-hidden className="size-3.5" />{dropK}</span> : idx + 1}
                   </MenuTrigger>
                   <MenuContent align="start">
-                    <MenuItem onSelect={() => p.onToggleKind(s.id)}>{isWarm ? "Mark as working set" : "Mark as warm-up"}</MenuItem>
-                    <MenuItem destructive onSelect={() => p.onRemoveSet(s.id)}><Trash2 /> Remove set</MenuItem>
+                    {isDrop ? (
+                      <MenuItem destructive onSelect={() => p.onRemoveSet(s.id)}><Trash2 /> Remove drop</MenuItem>
+                    ) : (
+                      <>
+                        {s.kind === "working" && <MenuItem onSelect={() => p.onAddDrop(s.id)}><CornerDownRight /> {hasDrops ? "Add another drop" : "Make it a drop set"}</MenuItem>}
+                        <MenuItem disabled={!canToggleKind(item.sets, s.id)} onSelect={() => p.onToggleKind(s.id)}>
+                          {isWarm ? "Mark as working set" : hasDrops ? "Mark as warm-up (remove drops first)" : "Mark as warm-up"}
+                        </MenuItem>
+                        <MenuItem destructive onSelect={() => p.onRemoveSet(s.id)}><Trash2 /> {hasDrops ? "Remove set and its drops" : "Remove set"}</MenuItem>
+                      </>
+                    )}
                   </MenuContent>
                 </Menu>
+              );
+              const addDropButton = lastOfGroup && !removing && (
+                <button
+                  onClick={() => p.onAddDrop(parentId)}
+                  className={cn("mb-1 flex h-9 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium text-accent hover:bg-muted", dropRail, focusRing)}
+                >
+                  <Plus className="size-3.5" /> Drop<span className="sr-only"> after {setName.replace(/ drop \d+$/, "").toLowerCase()}</span>
+                </button>
               );
               const removeButton = (
                 <button
@@ -277,12 +320,13 @@ export function ExerciseCard(p: Props) {
                 const pi = sidedIdx;
                 const partial = setPerformed(set) && !setDone(set);
                 return (
-                  <div key={s.id} role="group" aria-label={`${setName}, left and right`} aria-current={active ? "step" : undefined}
-                    className={cn("mt-0.5 rounded-md pb-0.5 transition-colors", active && activeRow)}>
+                  <div key={s.id}>
+                  <div role="group" aria-label={`${setName}, left and right`} aria-current={active ? "step" : undefined}
+                    className={cn("mt-0.5 rounded-md pb-0.5 transition-colors", isDrop && dropRail, active && activeRow)}>
                     <div className="flex items-center gap-1 px-1.5 @md:px-2">
                       {setMenu("w-11 shrink-0")}
                       <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
-                        Left / right
+                        {isDrop ? `Drop ${dropK} · left / right` : "Left / right"}
                         {partial && <span className="text-pending"> · {SIDES.find((sd) => !set.sides![sd].completed) === "left" ? "left" : "right"} side to go</span>}
                       </span>
                       {removing ? removeButton : (
@@ -298,9 +342,9 @@ export function ExerciseCard(p: Props) {
                     </div>
                     {SIDES.map((side) => (
                       <SideRow
-                        key={side} side={side} set={s} setName={setName} isWarm={isWarm} showRir={showRir} setGrid={setGrid}
+                        key={side} side={side} set={s} setName={setName} plain={isWarm || isDrop} showRir={showRir} setGrid={setGrid}
                         ex={ex} unit={unit} rx={rx}
-                        prev={isWarm || !prevSide[side] ? null : previousCounterpart(prevSide[side]!.sets, pi, ex)}
+                        prev={isWarm || isDrop || !prevSide[side] ? null : previousCounterpart(prevSide[side]!.sets, pi, ex)}
                         rec={p.recommendation?.sides?.[side] ?? null} index={pi}
                         reportFieldError={reportFieldError} fieldErrors={fieldErrors}
                         onChange={(patch) => p.onSideChange(s.id, side, patch)}
@@ -308,16 +352,20 @@ export function ExerciseCard(p: Props) {
                       />
                     ))}
                   </div>
+                  {addDropButton}
+                  </div>
                 );
               }
 
-              const prevSet = isWarm ? null : previousCounterpart(prevSets, idx, ex);
-              const targetReps = isWarm ? null : rec?.targetReps?.[idx] ?? prevSet?.reps ?? null;
-              const suggestedLoad = isWarm ? null : rec?.targetLoadKg ?? (assisted ? prevSet?.assistanceKg : prevSet?.weightKg) ?? null;
+              // Warm-ups and drops get no suggestion and no comparison: their numbers are whatever was done.
+              const plain = isWarm || isDrop;
+              const prevSet = plain ? null : previousCounterpart(prevSets, idx, ex);
+              const targetReps = plain ? null : rec?.targetReps?.[idx] ?? prevSet?.reps ?? null;
+              const suggestedLoad = plain ? null : rec?.targetLoadKg ?? (assisted ? prevSet?.assistanceKg : prevSet?.weightKg) ?? null;
               const loadVal = assisted ? s.assistance_kg : s.weight_kg;
               const showLoad = loadVal ?? (s.completed ? null : suggestedLoad);
               const isSuggested = loadVal == null && showLoad != null;
-              const cmp = s.completed && !isWarm ? compareSet(toLoggedSet(s), prevSet, ex) : null;
+              const cmp = s.completed && !plain ? compareSet(toLoggedSet(s), prevSet, ex) : null;
               const cmpText = cmp ? comparisonText(cmp, unit, ex.loadType) : null;
               const loadName = ex.loadType === "assisted" ? "assistance" : "load";
               const rowErrors = [
@@ -327,18 +375,25 @@ export function ExerciseCard(p: Props) {
               ].filter(Boolean);
 
               return (
+                <div key={s.id}>
                 <div
-                  key={s.id}
                   aria-current={active ? "step" : undefined}
                   className={cn(
                     "grid items-center gap-x-1.5 gap-y-0.5 rounded-md px-1.5 py-1 transition-colors @md:gap-y-1.5 @md:px-2",
                     setGrid,
+                    isDrop && dropRail,
                     s.completed && "bg-done/[0.07]",
                     active && activeRow,
                   )}
                 >
                   {setMenu()}
-                  <PreviousCell prevText={prevSet ? formatSetShort(prevSet, ex.loadType, unit) : null} cmpText={cmpText} />
+                  {isDrop ? (
+                    <p className="col-[2/-1] row-start-2 hidden text-[12.5px] text-muted-foreground @md:col-[2/3] @md:row-start-1 @md:block">Drop {dropK} · not compared</p>
+                  ) : isWarm ? (
+                    <p className="col-[2/-1] row-start-2 hidden text-[12.5px] text-muted-foreground @md:col-[2/3] @md:row-start-1 @md:block">Warm-up · not counted</p>
+                  ) : (
+                    <PreviousCell prevText={prevSet ? formatSetShort(prevSet, ex.loadType, unit) : null} cmpText={cmpText} />
+                  )}
                   <NumberField
                     ariaLabel={`${setName} ${loadName}`}
                     onErrorChange={(m) => reportFieldError(`${s.id}:load`, m)}
@@ -353,7 +408,7 @@ export function ExerciseCard(p: Props) {
                     onErrorChange={(m) => reportFieldError(`${s.id}:reps`, m)}
                     value={s.reps}
                     integer
-                    placeholder={targetReps != null ? String(targetReps) : String(rx.rep_max ?? "")}
+                    placeholder={isDrop ? "–" : targetReps != null ? String(targetReps) : String(rx.rep_max ?? "")}
                     max={200}
                     onCommit={(v) => p.onSetChange(s.id, { reps: v })}
                   />
@@ -375,6 +430,8 @@ export function ExerciseCard(p: Props) {
                     <p aria-hidden className="col-span-full px-1 pb-0.5 text-[12px] leading-snug text-negative">{rowErrors.join(" ")}</p>
                   )}
                 </div>
+                {addDropButton}
+                </div>
               );
             })}
           </div>
@@ -383,6 +440,11 @@ export function ExerciseCard(p: Props) {
             <button onClick={() => p.onAddSet("working")} className={footerButton}>
               <Plus className="size-4" /> Add set
             </button>
+            {!removing && (
+              <button onClick={() => p.onAddSet("warmup")} className={footerButton}>
+                <Flame className="size-4" /> Warm-up<span className="sr-only"> set</span>
+              </button>
+            )}
             {item.sets.length > 0 && (
               <button onClick={() => setRemoving((r) => !r)} aria-pressed={removing} className={cn(footerButton, removing && "bg-muted text-foreground")}>
                 {removing ? <><Check className="size-4" /> Done</> : <><Trash2 className="size-4" /> Remove</>}
@@ -470,8 +532,8 @@ function PreviousCell({ prevText, cmpText, prefix = "Previous" }: { prevText: st
 }
 
 /** One side of a left/right set: its own load, reps, RIR and completion, compared with the same side last time. */
-function SideRow({ side, set: s, setName, isWarm, showRir, setGrid, ex, unit, rx, prev, rec, index, reportFieldError, fieldErrors, onChange, onComplete }: {
-  side: Side; set: WSet; setName: string; isWarm: boolean; showRir: boolean; setGrid: string;
+function SideRow({ side, set: s, setName, plain, showRir, setGrid, ex, unit, rx, prev, rec, index, reportFieldError, fieldErrors, onChange, onComplete }: {
+  side: Side; set: WSet; setName: string; plain: boolean; showRir: boolean; setGrid: string;
   ex: ExerciseConfig; unit: WeightUnit; rx: WExercise["prescribed"]; prev: LoggedSet | null; rec: Recommendation | null; index: number;
   reportFieldError: (key: string, m: string | null) => void; fieldErrors: Record<string, string>;
   onChange: (patch: SidePatch) => void; onComplete: () => void;
@@ -481,10 +543,10 @@ function SideRow({ side, set: s, setName, isWarm, showRir, setGrid, ex, unit, rx
   const v = sideAsSet(toLoggedSet(s), side);
   const done = v.completed;
   const loadVal = assisted ? v.assistanceKg : v.weightKg;
-  const suggested = isWarm ? null : rec?.targetLoadKg ?? (assisted ? prev?.assistanceKg : prev?.weightKg) ?? null;
+  const suggested = plain ? null : rec?.targetLoadKg ?? (assisted ? prev?.assistanceKg : prev?.weightKg) ?? null;
   const showLoad = loadVal ?? (done ? null : suggested);
-  const targetReps = isWarm ? null : rec?.targetReps?.[index] ?? prev?.reps ?? null;
-  const cmp = done && !isWarm ? comparisonText(compareSet(v, prev, ex), unit, ex.loadType) : null;
+  const targetReps = plain ? null : rec?.targetReps?.[index] ?? prev?.reps ?? null;
+  const cmp = done && !plain ? comparisonText(compareSet(v, prev, ex), unit, ex.loadType) : null;
   const name = `${setName} ${sideLabel[side].toLowerCase()}`;
   const key = `${s.id}:${side}`;
   const errors = ["load", "reps", "rir"].map((f) => fieldErrors[`${key}:${f}`] && `${f === "rir" ? "RIR" : f[0].toUpperCase() + f.slice(1)}: ${fieldErrors[`${key}:${f}`]}`).filter(Boolean);
@@ -511,7 +573,7 @@ function SideRow({ side, set: s, setName, isWarm, showRir, setGrid, ex, unit, rx
         onErrorChange={(m) => reportFieldError(`${key}:reps`, m)}
         value={v.reps}
         integer
-        placeholder={targetReps != null ? String(targetReps) : String(rx.rep_max ?? "")}
+        placeholder={plain ? "–" : targetReps != null ? String(targetReps) : String(rx.rep_max ?? "")}
         max={200}
         onCommit={(x) => onChange({ reps: x })}
       />

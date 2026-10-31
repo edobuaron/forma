@@ -4,7 +4,8 @@ export type ExerciseCategory = "compound" | "isolation" | "bodyweight" | "weight
 export type LoadType = "external" | "bodyweight" | "weighted_bodyweight" | "assisted";
 export type ProgressionStrategy = "double_progression" | "reps_first" | "bodyweight_reps" | "skill" | "none";
 export type Equipment = "barbell" | "dumbbell" | "cable" | "machine" | "smith" | "bodyweight" | "other";
-export type SetKind = "warmup" | "working";
+/** "drop": a drop segment that continues a working set (migration 013). Rules in drops.ts. */
+export type SetKind = "warmup" | "working" | "drop";
 /** Why planned sets were left out of a session. Recorded by the user; null means unknown. */
 export type ShortfallReason = "time" | "equipment" | "fatigue" | "other";
 export type WeightUnit = "kg" | "lb";

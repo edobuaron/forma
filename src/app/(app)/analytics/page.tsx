@@ -103,7 +103,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
-            <CardHeader><div><CardTitle>Weekly volume</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">Load × reps, external load, {unit}</p></div></CardHeader>
+            <CardHeader><div><CardTitle>Weekly volume</CardTitle><p className="mt-0.5 text-[12.5px] text-muted-foreground">Working sets, load × reps, external load, {unit}. Warm-ups and drops not included</p></div></CardHeader>
             <CardContent><Bars height={200} suffix={` ${unit}`} data={weeks.map((w) => ({ x: wkLabel(w), y: Math.round(kgToDisplay(vol.get(w) ?? 0, unit)), title: `Week of ${wkLabel(w)}`, detail: `${sets.get(w) ?? 0} working sets` }))} /></CardContent>
           </Card>
           <Card>

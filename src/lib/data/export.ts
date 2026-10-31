@@ -4,6 +4,7 @@ type Row = Record<string, unknown>;
 export const SET_CSV_COLUMNS = [
   "date", "workout", "exercise", "set_number", "side", "kind", "weight_kg", "assistance_kg", "reps", "rir", "bodyweight_kg",
   "equipment", "attachment", "load_type", "prescribed_rep_min", "prescribed_rep_max", "workout_id", "exercise_id", "set_id",
+  "drop_parent_set_id",
 ];
 
 /**
@@ -11,6 +12,8 @@ export const SET_CSV_COLUMNS = [
  * one row per performed side (same set_number and set_id, side = left/right); a side that wasn't
  * performed has no row and is never written as zero. Sets logged together have an empty side.
  * attachment: the name logged with the workout, "none" for no attachment, empty when not recorded.
+ * kind: warmup / working / drop. A drop segment's drop_parent_set_id is the set_id of the working set it
+ * continues; its work is drop volume, not working volume.
  */
 export function exportSetRows(hist: Row[], exById: Map<string, Row>): Row[] {
   return hist.filter((h) => h.status === "completed" && h.completed).flatMap((h) => {
@@ -20,7 +23,7 @@ export function exportSetRows(hist: Row[], exById: Map<string, Row>): Row[] {
       equipment: e.equipment, load_type: e.load_type, set_number: (h.position as number) + 1, kind: h.kind, bodyweight_kg: h.bodyweight_kg,
       attachment: h.attachment_state === "attachment" ? h.attachment_name : h.attachment_state === "none" ? "none" : "",
       prescribed_rep_min: (h.prescribed as { rep_min?: number })?.rep_min, prescribed_rep_max: (h.prescribed as { rep_max?: number })?.rep_max,
-      set_id: h.id,
+      set_id: h.id, drop_parent_set_id: h.drop_parent_id ?? "",
     };
     if (!h.sided) return [{ ...base, side: "", weight_kg: h.weight_kg, assistance_kg: h.assistance_kg, reps: h.reps, rir: h.rir }];
     return (["left", "right"] as const).filter((s) => h[`${s}_completed`]).map((s) => ({

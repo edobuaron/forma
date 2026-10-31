@@ -24,6 +24,14 @@ describe("set CSV export", () => {
     }], ex);
     expect(rows.map((r) => [r.side, r.weight_kg, r.reps, r.attachment])).toEqual([["left", 25, 10, "none"], ["right", 22.5, 8, "none"]]);
   });
+  it("labels warm-ups and drops, and links each drop to its working set", () => {
+    const rows = exportSetRows([
+      { ...base, id: "w", position: 0, kind: "warmup", weight_kg: 20, reps: 12 },
+      { ...base, id: "p", position: 1, weight_kg: 40, reps: 10 },
+      { ...base, id: "d", position: 2, kind: "drop", drop_parent_id: "p", weight_kg: 30, reps: 8 },
+    ], ex);
+    expect(rows.map((r) => [r.kind, r.set_id, r.drop_parent_set_id])).toEqual([["warmup", "w", ""], ["working", "p", ""], ["drop", "d", "p"]]);
+  });
   it("skips incomplete sets and unfinished workouts", () => {
     expect(exportSetRows([{ ...base, id: "d", position: 0, completed: false }, { ...base, id: "e", position: 0, status: "in_progress" }], ex)).toEqual([]);
   });

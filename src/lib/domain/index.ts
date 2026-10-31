@@ -2,6 +2,7 @@ export * from "./types";
 export * from "./units";
 export * from "./e1rm";
 export * from "./sets";
+export * from "./drops";
 export * from "./loads";
 export * from "./comparison";
 export * from "./progression";

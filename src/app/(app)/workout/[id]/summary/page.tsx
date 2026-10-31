@@ -13,7 +13,7 @@ import { normalizeSet } from "@/lib/data/set-rows";
 import { prLabel, type PRType } from "@/lib/domain/prs";
 import { formatVolume, formatWeight } from "@/lib/domain/units";
 import { getProfile, getSessionFull, recentHistory, sessionRecords } from "@/lib/data/queries";
-import { isWorkingRow, rowVolumeKg, toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription } from "@/lib/data/types";
+import { isDropRow, isWorkingRow, rowDropVolumeKg, rowVolumeKg, toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription } from "@/lib/data/types";
 import { requireUser } from "@/lib/supabase/server";
 import { formatMinutes } from "@/lib/utils";
 
@@ -35,7 +35,11 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
   const duration = session.ended_at ? new Date(session.ended_at).getTime() - new Date(session.started_at).getTime() : 0;
   const performed = session.exercises.filter((e) => e.sets.some((s) => s.completed));
   const totalSets = performed.reduce((a, e) => a + e.sets.filter(isWorkingRow).length, 0);
-  const volume = performed.reduce((a, e) => a + e.sets.reduce((b, s) => b + rowVolumeKg(s), 0), 0);
+  // Working and drop volume are kept apart and only added for the labelled total; warm-ups are never in either.
+  const workingKg = performed.reduce((a, e) => a + e.sets.reduce((b, s) => b + rowVolumeKg(s), 0), 0);
+  const dropKg = performed.reduce((a, e) => a + e.sets.reduce((b, s) => b + rowDropVolumeKg(s), 0), 0);
+  const drops = performed.reduce((a, e) => a + e.sets.filter(isDropRow).length, 0);
+  const warmups = performed.reduce((a, e) => a + e.sets.filter((s) => s.kind === "warmup" && s.completed).length, 0);
 
   const rows = performed.map((e) => {
     const cfg = toExerciseConfig(e.exercise);
@@ -63,13 +67,20 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
       <div className="mb-4 grid grid-cols-3 gap-3">
         {[
           { icon: Clock, label: "Duration", value: formatMinutes(duration) },
-          { icon: Layers, label: "Working sets", value: totalSets },
-          { icon: Dumbbell, label: "Volume", value: formatVolume(volume, unit) },
+          {
+            icon: Layers, label: "Working sets", value: totalSets,
+            detail: [drops > 0 && `+ ${drops} drop${drops === 1 ? "" : "s"}`, warmups > 0 && `${warmups} warm-up${warmups === 1 ? "" : "s"} not counted`].filter(Boolean).join(" · "),
+          },
+          {
+            icon: Dumbbell, label: dropKg > 0 ? "Total volume" : "Volume", value: formatVolume(workingKg + dropKg, unit),
+            detail: dropKg > 0 ? `Working ${formatVolume(workingKg, unit)} · drops ${formatVolume(dropKg, unit)}` : "",
+          },
         ].map((s) => (
           <Card key={s.label} className="p-4">
             <s.icon className="mb-2 size-4 text-accent" />
             <p className="num whitespace-nowrap text-[19px] sm:text-[24px]">{s.value}</p>
             <p className="text-[12px] text-muted-foreground">{s.label}</p>
+            {"detail" in s && s.detail && <p className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground tabular">{s.detail}</p>}
           </Card>
         ))}
       </div>

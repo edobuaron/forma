@@ -82,3 +82,27 @@ describe("history editor with sides", () => {
     expect(toSessionEdit(draftFromSession(s)).exercises[0]).toMatchObject({ track_sides: true, attachment_state: "none", attachment_id: null });
   });
 });
+
+describe("history editor: warm-ups and drops", () => {
+  const row = exercise("external", "Lateral raise");
+  const sets = [
+    set({ id: "w", position: 0, kind: "warmup", weight_kg: 5, reps: 15 }),
+    set({ id: "d1", position: 3, kind: "drop", drop_parent_id: "a", weight_kg: 7.5, reps: 8 }),
+    set({ id: "a", position: 1, weight_kg: 10, reps: 12 }),
+    set({ id: "b", position: 2, weight_kg: 10, reps: 11 }),
+  ];
+
+  it("loads drops right after their parent, and sends the parent only for drops", () => {
+    const d = draftFromSession(session(sets, row));
+    expect(d.items[0].sets.map((s) => s.id)).toEqual(["w", "a", "d1", "b"]);
+    const out = toSessionEdit(d).exercises[0].sets;
+    expect(out.map((s) => [s.id, s.kind, s.drop_parent_id])).toEqual([["w", "warmup", undefined], ["a", "working", undefined], ["d1", "drop", "a"], ["b", "working", undefined]]);
+    expect(validateDraft(d)).toBeNull();
+  });
+
+  it("refuses a drop that doesn't follow a working set of its exercise", () => {
+    const d = draftFromSession(session(sets, row));
+    d.items[0].sets = [d.items[0].sets[2], ...d.items[0].sets.filter((s) => s.id !== "d1")];
+    expect(validateDraft(d)).toMatch(/drop must follow its working set/);
+  });
+});
