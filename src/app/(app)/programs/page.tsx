@@ -1,4 +1,5 @@
-import { ChevronRight, LayoutList } from "lucide-react";
+import { ChevronRight, FileUp, LayoutList } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { AddStarterButton, NewProgramButton } from "@/components/programs/program-actions";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +18,11 @@ export default async function ProgramsPage() {
   const full = await Promise.all(programs.map((p) => getProgram(supabase, p.id)));
   return (
     <>
-      <PageHeader title="Programs" subtitle="Templates define what you plan to do. Workouts record what you did." actions={<NewProgramButton />} />
+      <PageHeader title="Programs" subtitle="Templates define what you plan to do. Workouts record what you did."
+        actions={<div className="flex gap-2"><Button asChild variant="outline" size="sm"><Link href="/programs/import"><FileUp /> Import plan</Link></Button><NewProgramButton /></div>} />
       {programs.length === 0 && (
         <EmptyState icon={<LayoutList />} title="No programs yet" action={<div className="flex flex-wrap justify-center gap-2"><NewProgramButton /><AddStarterButton /></div>}>
-          A program holds the workouts you plan to do. Create one and add workouts and exercises, or add a fresh copy of the 4-day starter program.
+          A program holds the workouts you plan to do. Create one and add workouts and exercises, import a plan from your trainer, or add a fresh copy of the 4-day starter program.
         </EmptyState>
       )}
       <div className="space-y-3">

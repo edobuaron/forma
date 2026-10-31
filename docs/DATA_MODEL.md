@@ -33,7 +33,8 @@ Sessions reference templates with `on delete set null`; they never depend on the
 | `programs` | Training programs | one `is_active` per user; `version` increments on each save; `starter_version` set on starter copies |
 | `program_versions` | History of program changes | full JSON snapshot + note |
 | `workout_templates` | A planned workout (e.g. "Push") | `day_of_week` is legacy (always null after editing); workouts are not tied to weekdays |
-| `template_exercises` | Planned exercise in a template | sets, rep_min, rep_max, rest_s, target_rir, optional, notes |
+| `template_exercises` | Planned exercise in a template | sets, rep_min, rep_max, rest_s, target_rir, optional, notes; since migration 014 also `warmup_sets`, `drop_segments` + `drop_scope` (last_set / all_sets), `target_rpe` (separate from RIR, never converted), `tempo`, `target_weight_kg` (a prescription only), `per_side` (reps per side; set count unchanged), `superset_group` (A–Z) |
+| `plan_imports` | Plan-import drafts (migration 014) | private per user; `draft` jsonb autosaved during review; cleared when the program is created (`status = created`, `created_program_id` kept for retries); expires 30 days after the last change |
 | `workout_sessions` | A performed workout | `status` in_progress / completed / discarded (max one in progress), started/ended, notes, bodyweight snapshot |
 | `session_exercises` | Exercise performed in a session | `prescribed` snapshot, `substituted_for`, notes |
 | `set_logs` | One set | `kind` warmup / working, `weight_kg` (**added** weight for bodyweight movements), `assistance_kg` (assisted movements), reps, rir, completed, completed_at |
@@ -47,6 +48,8 @@ Sessions reference templates with `on delete set null`; they never depend on the
 - `set_history` (view, `security_invoker`): flat join of sets with their session and exercise. Used for analytics and export.
 - `recent_exercise_history(exercise_ids, sessions, exclude_session)`: last N completed sessions per exercise. Powers previous-session comparison and recommendations. When a session is excluded, only sessions that started before it count, so a backdated workout compares against what came before it.
 - `start_workout_on(template_id, name, started_at)`: atomically creates a session, its exercises (with prescription snapshot) and empty sets. `started_at` defaults to now; a past date logs a workout for that day (future dates are rejected). `start_workout(template_id, name)` is kept as a wrapper that starts now.
+- `create_program_from_import(import_id, program, make_active)`: creates a new program from a reviewed plan in one transaction, validating every value; retrying with the same import id returns the same program. Never touches existing programs or history and creates no sessions. `purge_expired_plan_imports()` removes expired drafts. See [PLAN_IMPORT.md](PLAN_IMPORT.md).
+- `start_workout_on` (since 014) also copies the new prescription fields into `session_exercises.prescribed` and creates the prescribed warm-up sets (kind `warmup`, before the working sets). Drop segments are never pre-created and no load is pre-filled.
 - `snapshot_program(program_id, note)`: bumps the program version and stores a snapshot.
 - `ensure_seeded()`: creates the profile if missing and seeds the starter program once for an account that has never been seeded and has no programs. Never recreates an archived or deleted starter.
 - `add_starter_program()`: explicit, fresh copy of the starter template. Existing programs are untouched.

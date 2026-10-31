@@ -112,6 +112,18 @@ export interface TemplateExerciseRow {
   target_rir: number | null;
   optional: boolean;
   notes: string | null;
+  /** Plan prescriptions (migration 014). Optional so older selects and fixtures still type-check. */
+  warmup_sets?: number;
+  drop_segments?: number;
+  drop_scope?: "last_set" | "all_sets" | null;
+  /** RPE is its own scale; never converted to or from RIR. */
+  target_rpe?: number | null;
+  tempo?: string | null;
+  /** The plan's prescribed load (kg). A prescription, never evidence of performance. */
+  target_weight_kg?: number | null;
+  /** Reps are per side; the set count is unchanged. */
+  per_side?: boolean;
+  superset_group?: string | null;
 }
 
 export interface SessionRow {
@@ -138,6 +150,15 @@ export interface PrescribedJson {
   target_rir?: number | null;
   optional?: boolean;
   notes?: string | null;
+  /** Added in migration 014; absent on workouts started before it. */
+  warmup_sets?: number;
+  drop_segments?: number;
+  drop_scope?: "last_set" | "all_sets" | null;
+  target_rpe?: number | null;
+  tempo?: string | null;
+  target_weight_kg?: number | null;
+  per_side?: boolean;
+  superset_group?: string | null;
 }
 
 export interface SessionExerciseRow {

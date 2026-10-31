@@ -37,6 +37,19 @@ function NumCell({ value, onChange, label, step = 1, className }: { value: numbe
   );
 }
 
+/** Prescriptions an imported plan can carry (migration 014). Shown here; kept unchanged on save. */
+function planDetails(e: TE): string[] {
+  const out: string[] = [];
+  if (e.per_side) out.push("reps per side");
+  if (e.warmup_sets) out.push(`${e.warmup_sets} warm-up set${e.warmup_sets > 1 ? "s" : ""}`);
+  if (e.drop_segments) out.push(`drop set: ${e.drop_segments} drop${e.drop_segments > 1 ? "s" : ""} on ${e.drop_scope === "all_sets" ? "every set" : "the last set"}`);
+  if (e.target_rpe != null) out.push(`RPE ${e.target_rpe}`);
+  if (e.tempo) out.push(`tempo ${e.tempo}`);
+  if (e.target_weight_kg != null) out.push(`plan load ${e.target_weight_kg} kg`);
+  if (e.superset_group) out.push(`superset ${e.superset_group}`);
+  return out;
+}
+
 export function ProgramEditor({ program, library, versions }: { program: ProgramFull; library: ExerciseRow[]; versions: { id: string; version: number; note: string | null; created_at: string }[] }) {
   const router = useRouter();
   const [name, setName] = useState(program.name);
@@ -203,6 +216,9 @@ export function ProgramEditor({ program, library, versions }: { program: Program
                     <NumCell label="Rest s" value={e.rest_s} onChange={(v) => patchE(t.id, e.id, { rest_s: v ?? 0 })} />
                     <NumCell label="RIR" value={e.target_rir} step={0.5} onChange={(v) => patchE(t.id, e.id, { target_rir: v })} />
                   </div>
+                  {planDetails(e).length > 0 && (
+                    <p className="mt-2 pl-7 text-[12px] text-muted-foreground">{planDetails(e).join(" · ")}</p>
+                  )}
                   <div className="mt-2 flex items-center gap-3 pl-7">
                     <Input value={e.notes ?? ""} onChange={(ev) => patchE(t.id, e.id, { notes: ev.target.value || null })} placeholder="Notes" className="h-8 flex-1 text-[13px]" />
                     <label className="flex items-center gap-2 text-[12px] text-muted-foreground">Optional <Switch checked={e.optional} onCheckedChange={(c) => patchE(t.id, e.id, { optional: c })} /></label>
