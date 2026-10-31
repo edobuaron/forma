@@ -10,7 +10,7 @@ upload or paste → review the extracted draft → resolve what's missing or amb
 | Pasted text or table | In the browser. Tabs (spreadsheet copy), Markdown pipes, semicolons and commas are detected; anything else is read one exercise per line, with headings ("Day 1", "Upper", lines ending in `:`) starting a workout. | No |
 | `.csv`, `.tsv`, `.txt` (≤ 256 KB) | Same as pasted text. | No |
 | `.xlsx` (≤ 2 MB) | In the browser (`readXlsx`): shared/inline strings, numbers, vertically merged cells filled down, hidden sheets skipped, formulas use their cached value. Several sheets with a header row are read as one workout per sheet. | No |
-| PDF (≤ 10 MB), JPEG/PNG/WebP (≤ 5 MB) | Needs an external AI/OCR provider. **Not enabled**: see below. Without one, the screen offers manual entry or paste. | Only with a provider, and only after the user confirms a disclosure |
+| PDF (≤ 10 MB), JPEG/PNG/WebP (≤ 5 MB) | Needs an external AI/OCR provider. **Off by decision (2026-10-31): CSV and Excel first.** The file picker offers only CSV, Excel and text, and a PDF or photo chosen anyway gets a message pointing to Paste, CSV/Excel or manual entry. | Only with a provider, and only after the user confirms a disclosure |
 
 The column mapping (and sheet and header row) can be changed on the review screen; the table is then read again.
 

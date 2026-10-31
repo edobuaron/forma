@@ -115,6 +115,9 @@ export function ImportPlan({ library: initialLibrary, drafts, unit, defaultRestS
         return start(draftFromGrid(uuid(), "xlsx", name, gridSourceFor(sheets), ctx));
       }
       if (ext === "xls" || ext === "numbers" || ext === "ods") return toast.error("Save the spreadsheet as .xlsx or .csv first.");
+      if (!documentsEnabled) {
+        return toast.error("PDFs and photos can't be imported yet. Copy the table into Paste, save it as CSV or Excel (.xlsx), or enter the plan by hand.");
+      }
       const problem = documentProblem(f.type, f.size);
       if (problem) return toast.error(problem);
       setPendingDoc(f); // PDFs and photos need explicit consent before anything is sent.
@@ -245,11 +248,19 @@ export function ImportPlan({ library: initialLibrary, drafts, unit, defaultRestS
             <>
               <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed px-4 py-7 text-center text-[14px] text-muted-foreground hover:bg-muted/60">
                 <span className="flex items-center gap-2">{busy ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />} Choose a file</span>
-                <span className="text-[12.5px]">CSV, XLSX or text up to {MAX_XLSX_BYTES / 1024 / 1024} MB · PDF up to 10 MB · photos (JPEG, PNG, WebP) up to 5 MB</span>
-                <input type="file" className="sr-only" accept={`.csv,.tsv,.txt,.xlsx,${Object.keys(DOCUMENT_TYPES).join(",")}`}
+                <span className="text-[12.5px]">
+                  {documentsEnabled
+                    ? `CSV, Excel (.xlsx) or text up to ${MAX_XLSX_BYTES / 1024 / 1024} MB · PDF up to 10 MB · photos (JPEG, PNG, WebP) up to 5 MB`
+                    : `CSV, Excel (.xlsx) or text, up to ${MAX_XLSX_BYTES / 1024 / 1024} MB`}
+                </span>
+                <input type="file" className="sr-only" accept={`.csv,.tsv,.txt,.xlsx${documentsEnabled ? `,${Object.keys(DOCUMENT_TYPES).join(",")}` : ""}`}
                   onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ""; }} />
               </label>
-              <p className="text-[12.5px] text-muted-foreground">CSV, XLSX and text are read on this device. PDFs and photos need a reading service (see below).</p>
+              <p className="text-[12.5px] text-muted-foreground">
+                {documentsEnabled
+                  ? "CSV, Excel and text are read on this device. PDFs and photos are sent to a reading service, and you're asked first."
+                  : "Files are read on this device. Have a PDF or photo? Copy the table into Paste, or ask your trainer for the spreadsheet."}
+              </p>
             </>
           )}
         </section>
