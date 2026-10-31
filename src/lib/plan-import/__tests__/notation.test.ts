@@ -53,6 +53,8 @@ describe("rest", () => {
     expect(parseRest("2'").restS).toBe(120);
     expect(parseRest("1'30\"").restS).toBe(90);
     expect(parseRest("1:30").restS).toBe(90);
+    expect(parseRest("1'30").restS).toBe(90);
+    expect(parseRest("3' 2 warm-up sets").restS).toBe(180);
     expect(parseRest("1,5 min").restS).toBe(90);
     expect(parseRest("2 minuti").restS).toBe(120);
   });
@@ -170,6 +172,11 @@ describe("warm-ups, drop sets, supersets and unsupported instructions", () => {
   it("requires sets and reps", () => {
     const r = interpretRow(row({ exercise: "Plank" }));
     expect(r.flags.filter((f) => f.blocking).map((f) => f.code)).toEqual(["missing_sets", "missing_reps"]);
+  });
+
+  it("doesn't join a rest in minutes with the next number", () => {
+    const r = interpretRow(row({ exercise: "Back squat", setsReps: "4x5 rest 3' 2 warm-up sets" }));
+    expect(r.values).toMatchObject({ sets: 4, repMin: 5, restS: 180, warmupSets: 2 });
   });
 
   it("reads tempo and rest from free text", () => {

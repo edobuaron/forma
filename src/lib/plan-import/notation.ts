@@ -179,8 +179,9 @@ export function parseRest(text: string, unitHint?: "s" | "min"): RestResult {
 
   const clock = t.match(/(\d{1,2}):([0-5]\d)(?!\d)/);
   if (clock) return { restS: Number(clock[1]) * 60 + Number(clock[2]), origin: "interpreted", flags: [], matched: clock[0] };
-  const primes = t.match(/(\d+)\s*'\s*(\d+)\s*(?:"|'')?/);
-  if (primes) return { restS: Number(primes[1]) * 60 + Number(primes[2]), origin: "interpreted", flags: [], matched: primes[0] };
+  // 1'30" = 1 min 30 s. The seconds must follow the prime directly ("3' 2 warm-ups" is 3 min, then a new number).
+  const primes = t.match(/(\d+)\s*'(\d{1,2})(?:"|'')?(?!\d)/);
+  if (primes && Number(primes[2]) < 60) return { restS: Number(primes[1]) * 60 + Number(primes[2]), origin: "interpreted", flags: [], matched: primes[0] };
 
   const unitRe = String.raw`(s|sec|secs|seconds?|secondi|sek|"|''|m|min|mins|minutes?|minuti|minuto|')`;
   const range = t.match(new RegExp(String.raw`(${NUM})${RANGE_SEP}(${NUM})\s*${unitRe}?(?![a-z])`));
@@ -532,7 +533,7 @@ export function interpretRow(row: SourceRow): Interpretation {
       flags.push(flag({ field: "rest", code: "unparsed", blocking: false, message: "The rest couldn't be read. Kept in notes." }));
     }
   } else {
-    const m = all.match(/\b(?:rest|rec|recupero|riposo|pausa|pause|r)\s*[:=]?\s*((?:\d{1,2}:[0-5]\d)|(?:\d+\s*'\s*\d+\s*"?)|(?:\d+(?:[.,]\d+)?(?:\s*-\s*\d+(?:[.,]\d+)?)?(?:\s*(?:seconds?|secondi|secs|sec|s|minutes?|minuti|mins|min|m|"|')(?![a-z]))?))/);
+    const m = all.match(/\b(?:rest|rec|recupero|riposo|pausa|pause|r)\s*[:=]?\s*((?:\d{1,2}:[0-5]\d)|(?:\d+\s*'\d{1,2}"?)|(?:\d+(?:[.,]\d+)?(?:\s*-\s*\d+(?:[.,]\d+)?)?(?:\s*(?:seconds?|secondi|secs|sec|s|minutes?|minuti|mins|min|m|"|')(?![a-z]))?))/);
     if (m) {
       const r = parseRest(m[1], row.restUnit);
       if (r.restS != null) set("restS", r.restS, r.origin ?? "extracted");
