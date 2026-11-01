@@ -25,6 +25,14 @@ The column mapping (and sheet and header row) can be changed on the review scree
 - Anything Forma can't represent (rest-pause, myo-reps, clusters, timed sets, AMRAP, EMOM, …) stays in the exercise's notes and is flagged. Timed sets and AMRAP need reps entered before import.
 - Unknown text in a sets/reps cell is kept in notes ("As written: …") and flagged.
 
+## Running (`running.ts`)
+
+- A row is a run when its name says so (run, jog, treadmill, intervals, tempo/long/easy run, fartlek, strides, *corsa*, *ripetute*…). Walking, bike, rower and lifting rows never are. "This is a run" / "Not a run" on the review screen switch a row either way.
+- Read into the run fields: time ("30 min", "20'", "1:05:00"), distance ("5 km", "5k", "3 miles", "400 m"), intervals ("6×400 m rec 90 s", "8 × 1 min / 1 min jog", "5 × 3:00", recovery from the rest column), treadmill/outdoor. The run's name drops the target ("Easy run 30 min" → "Easy run").
+- Questions, never guesses: a bare number ("Run 30": minutes or km?), "30m" (minutes or metres?), a range ("30–40 min", "8–10 km"), both a time and a distance ("5 km in 30 min"), a unitless recovery. A recovery given as a distance stays in notes.
+- Pace, heart rate/zones, speed and incline can't be planned for a run: they stay in the run's notes and are flagged.
+- A run needs no exercise match, sets or reps; it becomes a `template_runs` row at its place in the workout.
+
 ## Exercise matching (`match.ts`)
 
 Against the user's own library first, then the built-in catalog. Only an exact name or alias is used without asking.

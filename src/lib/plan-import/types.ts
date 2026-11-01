@@ -5,6 +5,8 @@
 // exercise match) → review → validateDraft() → create_program_from_import() on the server.
 // The numbers in a plan are prescriptions. Nothing here represents performed work.
 
+import type { DraftRun } from "./running";
+
 export const MAX_TEXT_BYTES = 256 * 1024;
 export const MAX_XLSX_BYTES = 2 * 1024 * 1024;
 export const MAX_ROWS = 600;
@@ -63,6 +65,8 @@ export type FlagField =
 export interface FlagOption {
   label: string;
   patch: Partial<DraftValues>;
+  /** For a running row: the run fields this answer sets. */
+  runPatch?: Partial<DraftRun>;
 }
 
 export interface Flag {
@@ -72,7 +76,8 @@ export interface Flag {
   code:
     | "ambiguous_reps" | "missing_sets" | "missing_reps" | "time_based" | "amrap" | "rest_unit" | "rest_range"
     | "effort_unclear" | "effort_range" | "load_unit" | "load_percent" | "load_unparsed" | "drop_count" | "drop_scope"
-    | "superset_unclear" | "warmup_count" | "unsupported" | "unparsed" | "exercise_unmatched" | "exercise_proposed" | "per_side";
+    | "superset_unclear" | "warmup_count" | "unsupported" | "unparsed" | "exercise_unmatched" | "exercise_proposed" | "per_side"
+    | "run_unit" | "run_range" | "run_two_targets" | "run_unclear" | "run_recovery_distance" | "run_no_recovery";
   message: string;
   /** Blocking flags must be resolved (an option chosen or the field edited) before import. */
   blocking: boolean;
@@ -130,6 +135,12 @@ export interface DraftExercise extends DraftValues {
   flags: Flag[];
   /** Excluded rows stay in the draft (visible, struck through) but aren't imported. */
   skipped?: boolean;
+  /** Set when the row is a running prescription: it becomes a planned run, not an exercise. */
+  run?: DraftRun | null;
+  /** Flags of the running reading; the lifting flags in `flags` apply only when `run` is unset. */
+  runFlags?: Flag[];
+  /** Notes for the run (the plan's notes plus anything Forma can't plan, such as pace). */
+  runNotes?: string | null;
 }
 
 export interface DraftWorkout {

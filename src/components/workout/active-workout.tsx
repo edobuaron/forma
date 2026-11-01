@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { ChevronLeft, Cloud, CloudOff, Gauge, Loader2, MoreHorizontal, Plus, Timer, Trash2 } from "lucide-react";
+import { ChevronLeft, Cloud, CloudOff, Footprints, Gauge, Loader2, MoreHorizontal, Plus, Timer, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,7 +23,11 @@ import {
   addDropSegment, canToggleKind, copyLeftToRight, dropSegmentsOf, newSet, normalizeSet, orderSets, patchSide, plannedSets, reconcileSet,
   removalKind, removeSet, restoreSet, setSideCompleted, switchMode, type RemovedSet, type SidePatch,
 } from "@/lib/data/set-rows";
-import { toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription, type AttachmentRow, type ExerciseRow, type ProfileRow } from "@/lib/data/types";
+import {
+  distanceUnit, normalizeRun, toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription, type AttachmentRow, type ExerciseRow, type ProfileRow,
+  type SessionRunRow,
+} from "@/lib/data/types";
+import { runProblem } from "@/lib/domain/running";
 import { createClient } from "@/lib/supabase/client";
 import { formatDuration, uuid } from "@/lib/utils";
 import { AttachmentPicker } from "./attachment-picker";
@@ -31,6 +35,7 @@ import { EnergySheet } from "./energy-rating";
 import { ExerciseCard } from "./exercise-card";
 import { ExercisePicker } from "./exercise-picker";
 import { RestTimer, type RestState } from "./rest-timer";
+import { RunCard, type RunPatch } from "./run-card";
 import { ShortfallReasonField } from "./shortfall-reason";
 import type { WExercise, WSet } from "./types";
 
@@ -60,6 +65,35 @@ function toWorkout(s: SessionFull): WExercise[] {
     attachment_name: e.attachment_name ?? null,
     sets: orderSets(e.sets.map(({ session_id: _s, session_exercise_id: _se, ...set }) => normalizeSet(set))),
   }));
+}
+
+/** Re-apply queued run writes that never reached the server. */
+function applyPendingRuns(runs: SessionRunRow[], ops: SyncOp[], sessionId: string): SessionRunRow[] {
+  let out = [...runs];
+  for (const op of ops) {
+    if (op.table !== "session_runs") continue;
+    if (op.kind === "delete") { out = out.filter((r) => r.id !== op.id); continue; }
+    const i = out.findIndex((r) => r.id === op.id);
+    if (i >= 0) out[i] = normalizeRun({ ...out[i], ...(op.row as Partial<SessionRunRow>) });
+    else out.push(normalizeRun({ ...emptyRun(op.id, sessionId, 0), ...(op.row as Partial<SessionRunRow>) }));
+  }
+  return out.sort((a, b) => a.position - b.position);
+}
+
+function emptyRun(id: string, sessionId: string, position: number): SessionRunRow {
+  return {
+    id, session_id: sessionId, template_run_id: null, position, name: "Run", prescribed: {}, setting: null, duration_s: null,
+    distance_m: null, effort: null, intervals_done: null, notes: null, completed: false, completed_at: null,
+  };
+}
+
+/** Exercises and runs in one workout order (they share positions). */
+type Entry = { kind: "exercise"; id: string; position: number } | { kind: "run"; id: string; position: number };
+function workoutOrder(items: { id: string; position: number }[], runs: { id: string; position: number }[]): Entry[] {
+  return [
+    ...items.map((i) => ({ kind: "exercise" as const, id: i.id, position: i.position })),
+    ...runs.map((r) => ({ kind: "run" as const, id: r.id, position: r.position })),
+  ].sort((a, b) => a.position - b.position || (a.kind === b.kind ? 0 : a.kind === "exercise" ? -1 : 1));
 }
 
 /** Re-apply writes that were queued locally but never reached the server (crash / closed tab). */
@@ -106,6 +140,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
   const sessionId = initialSession.id;
   const queueRef = useRef<SyncQueue | null>(null);
   const [items, setItems] = useState<WExercise[]>(() => toWorkout(initialSession));
+  const [runs, setRuns] = useState<SessionRunRow[]>(() => (initialSession.runs ?? []).map(normalizeRun));
+  const distUnit = distanceUnit(profile);
   // Latest items for callbacks that outlive a render (the Undo action of a toast).
   const itemsRef = useRef(items);
   itemsRef.current = items;
@@ -140,6 +176,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     })();
     if (saved.length) {
       setItems((cur) => applyPending(cur, saved, library));
+      setRuns((cur) => applyPendingRuns(cur, saved, sessionId));
       const n = saved.find((o) => o.table === "workout_sessions" && o.row && "notes" in o.row);
       if (n) setNotes(String(n.row!.notes ?? ""));
       const en = saved.find((o) => o.table === "workout_sessions" && o.row && "energy_rating" in o.row);
@@ -431,14 +468,69 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     enqueueItem(next);
   }
 
-  function onMove(index: number, dir: -1 | 1) {
+  /** Move an exercise or a run one place in the workout. Exercises and runs share one order. */
+  function onMove(id: string, dir: -1 | 1) {
+    const order = workoutOrder(items, runs);
+    const index = order.findIndex((e) => e.id === id);
     const j = index + dir;
-    if (j < 0 || j >= items.length) return;
-    const arr = [...items];
-    [arr[index], arr[j]] = [arr[j], arr[index]];
-    const renumbered = arr.map((it, k) => ({ ...it, position: k }));
-    setItems(renumbered);
-    renumbered.forEach((it, k) => { if (items[k]?.id !== it.id) enqueueItem(it); });
+    if (index < 0 || j < 0 || j >= order.length) return;
+    [order[index], order[j]] = [order[j], order[index]];
+    const pos = new Map(order.map((e, k) => [e.id, k]));
+    const nextItems = items.map((it) => ({ ...it, position: pos.get(it.id)! }));
+    const nextRuns = runs.map((r) => ({ ...r, position: pos.get(r.id)! }));
+    setItems(nextItems.sort((a, b) => a.position - b.position));
+    setRuns(nextRuns.sort((a, b) => a.position - b.position));
+    nextItems.forEach((it) => { if (items.find((o) => o.id === it.id)?.position !== it.position) enqueueItem(it); });
+    nextRuns.forEach((r) => { if (runs.find((o) => o.id === r.id)?.position !== r.position) enqueueRun(r); });
+  }
+
+  // ---------- runs ----------
+  function enqueueRun(r: SessionRunRow) {
+    const { id, ...row } = r;
+    queueRef.current?.enqueue({ table: "session_runs", id, kind: "upsert", row: { ...row, session_id: sessionId } });
+  }
+
+  function nextPosition() {
+    return Math.max(-1, ...items.map((i) => i.position), ...runs.map((r) => r.position)) + 1;
+  }
+
+  function onAddRun() {
+    const r = emptyRun(uuid(), sessionId, nextPosition());
+    setRuns((cur) => [...cur, r]);
+    enqueueRun(r);
+    setTimeout(() => document.getElementById(`run-${r.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
+  function onRunChange(id: string, patch: RunPatch) {
+    const cur = runs.find((r) => r.id === id);
+    if (!cur) return;
+    let next = { ...cur, ...patch };
+    // A done run that no longer has valid values goes back to not done; nothing is saved as done with bad values.
+    if (next.completed && runProblem(next)) {
+      next = { ...next, completed: false, completed_at: null };
+      toast("Run marked not done. Fix the time or distance and mark it done again.");
+    }
+    setRuns((all) => all.map((r) => (r.id === id ? next : r)));
+    enqueueRun(next);
+  }
+
+  function onCompleteRun(id: string) {
+    const cur = runs.find((r) => r.id === id);
+    if (!cur) return;
+    if (cur.completed) { const n = { ...cur, completed: false, completed_at: null }; setRuns((all) => all.map((r) => (r.id === id ? n : r))); enqueueRun(n); return; }
+    const problem = runProblem(cur);
+    if (problem) { toast(problem); return; }
+    const next = { ...cur, completed: true, completed_at: backdated ? initialSession.started_at : new Date().toISOString() };
+    setRuns((all) => all.map((r) => (r.id === id ? next : r)));
+    enqueueRun(next);
+  }
+
+  function onRemoveRun(id: string) {
+    const r = runs.find((x) => x.id === id);
+    if (!r) return;
+    if ((r.completed || r.duration_s != null) && !confirm(`Remove ${r.name} and what you logged for it?`)) return;
+    setRuns((all) => all.filter((x) => x.id !== id));
+    queueRef.current?.enqueue({ table: "session_runs", id, kind: "delete" });
   }
 
   function onRemove(item: WExercise) {
@@ -463,7 +555,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     if (picker.mode === "add") {
       const item: WExercise = {
         id: uuid(), exercise: ex, exercise_id: ex.id, template_exercise_id: null, substituted_for: null,
-        position: items.length,
+        position: nextPosition(),
         prescribed: { sets: ex.default_sets, rep_min: ex.default_rep_min, rep_max: ex.default_rep_max, rest_s: ex.default_rest_s },
         notes: null,
         track_sides: ex.track_sides,
@@ -533,6 +625,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     }
     return { done, open, partial, planned, plannedDone };
   }, [items]);
+  const runsDone = runs.filter((r) => r.completed).length;
   const shortOfPlan = useMemo(
     () => items.some((i) => isShortOfPlan(i.prescribed, doneWorkingSets(i.sets.map(toLoggedSet)))),
     [items],
@@ -556,6 +649,10 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
       const problem = problems.find(Boolean);
       if (problem) { toast.error(`${item.exercise.name}: ${problem}`); return; }
     }
+    for (const r of runs) {
+      const problem = r.completed ? runProblem(r) : null;
+      if (problem) { toast.error(`${r.name}: ${problem}`); return; }
+    }
     setBusy(true);
     try {
       const q = queueRef.current!;
@@ -566,7 +663,11 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
           : "Couldn't reach the server, and this device couldn't store your sets. Keep this page open and try again when you're online.");
       }
       const mins = Number(minutes);
-      await finishWorkout(db, sessionId, notes || null, backdated ? new Date(startedAt.getTime() + (mins > 0 ? mins : estMinutes) * 60000) : new Date(), shortOfPlan ? shortfallReason : null);
+      // A run logged right after running would otherwise read as a 0-minute workout: a workout with
+      // only runs lasts at least as long as the times recorded for them.
+      const runOnlyEnd = counts.done === 0 ? startedAt.getTime() + runs.reduce((a, r) => a + (r.completed ? r.duration_s ?? 0 : 0), 0) * 1000 : 0;
+      const ended = backdated ? new Date(startedAt.getTime() + (mins > 0 ? mins : estMinutes) * 60000) : new Date(Math.max(Date.now(), runOnlyEnd));
+      await finishWorkout(db, sessionId, notes || null, ended, shortOfPlan ? shortfallReason : null);
       const exs = [...new Map(items.filter((i) => i.sets.some((s) => s.completed)).map((i) => [i.exercise_id, i.exercise])).values()];
       try {
         await recomputeRecords(db, exs);
@@ -599,7 +700,9 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
 
   const elapsed = now - startedAt.getTime();
   // ~40 s per completed set plus its prescribed rest
-  const estMinutes = Math.max(10, Math.round(items.reduce((a, i) => a + i.sets.filter((x) => x.completed).length * (40 + (i.prescribed.rest_s ?? profile.default_rest_s)), 0) / 60));
+  // plus the time of each completed run
+  const estMinutes = Math.max(10, Math.round((items.reduce((a, i) => a + i.sets.filter((x) => x.completed).length * (40 + (i.prescribed.rest_s ?? profile.default_rest_s)), 0)
+    + runs.reduce((a, r) => a + (r.completed ? r.duration_s ?? 0 : 0), 0)) / 60));
   const pickerItem = items.find((i) => i.id === attachmentFor) ?? null;
 
   return (
@@ -639,6 +742,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
             </MenuTrigger>
             <MenuContent>
               <MenuItem onSelect={() => setPicker({ mode: "add" })}><Plus /> Add exercise</MenuItem>
+              <MenuItem onSelect={onAddRun}><Footprints /> Add run</MenuItem>
               <MenuItem onSelect={() => setEditingEnergy(true)}>
                 <Gauge /> {energy == null ? "Add starting energy" : <>Starting energy <span className="ml-auto pl-3 text-muted-foreground tabular">{energy}/10</span></>}
               </MenuItem>
@@ -665,7 +769,19 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
             <span className="font-semibold text-foreground">Warm-up</span> · {warmupNotes}
           </p>
         )}
-        {items.map((item, idx) => {
+        {workoutOrder(items, runs).map((entry, idx, order) => {
+          if (entry.kind === "run") {
+            const run = runs.find((r) => r.id === entry.id)!;
+            return (
+              <div id={`run-${run.id}`} key={run.id} className="scroll-mt-20">
+                <RunCard run={run} unit={distUnit} live isFirst={idx === 0} isLast={idx === order.length - 1}
+                  active={!activeSetId && runs.find((r) => !r.completed)?.id === run.id}
+                  onChange={(patch) => onRunChange(run.id, patch)} onComplete={() => onCompleteRun(run.id)}
+                  onMove={(d) => onMove(run.id, d)} onRemove={() => onRemoveRun(run.id)} />
+              </div>
+            );
+          }
+          const item = items.find((i) => i.id === entry.id)!;
           const rec = recommendations.get(item.id) ?? null;
           const key = `progression:${item.exercise_id}:${rec?.evidenceSessionId ?? ""}`;
           return (
@@ -678,7 +794,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
                 recommendationDismissed={dismissed.has(key)}
                 unit={unit}
                 isFirst={idx === 0}
-                isLast={idx === items.length - 1}
+                isLast={idx === order.length - 1}
                 activeSetId={activeSetId}
                 onSetChange={(id, patch) => onSetChange(item, id, patch)}
                 onSideChange={(id, side, patch) => onSideChange(item, id, side, patch)}
@@ -692,7 +808,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
                 onRemoveSet={(id) => onRemoveSet(item, id)}
                 onToggleKind={(id) => onToggleKind(item, id)}
                 onNotes={(v) => onNotes(item, v)}
-                onMove={(d) => onMove(idx, d)}
+                onMove={(d) => onMove(item.id, d)}
                 onRemove={() => onRemove(item)}
                 onReplace={() => setPicker({ mode: "replace", itemId: item.id })}
                 onDismissRecommendation={() => onDismiss(item)}
@@ -701,9 +817,14 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
           );
         })}
 
-        <Button variant="outline" size="lg" className="w-full" onClick={() => setPicker({ mode: "add" })}>
-          <Plus /> Add exercise
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" size="lg" className="w-full" onClick={() => setPicker({ mode: "add" })}>
+            <Plus /> Add exercise
+          </Button>
+          <Button variant="outline" size="lg" className="w-full" onClick={onAddRun}>
+            <Footprints /> Add run
+          </Button>
+        </div>
 
         <div className="pt-4">
           <label className="mb-1.5 block px-1 text-[15px] font-semibold tracking-tight" htmlFor="session-notes">Workout notes</label>
@@ -736,7 +857,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
       <Sheet open={finishing} onOpenChange={setFinishing}>
         <SheetContent
           title={backdated ? "Save workout?" : "Finish workout?"}
-          description={`${backdated ? format(startedAt, "EEEE d MMMM") : formatDuration(elapsed)} · ${counts.done} set${counts.done === 1 ? "" : "s"} completed`}
+          description={`${backdated ? format(startedAt, "EEEE d MMMM") : formatDuration(elapsed)} · ${counts.done} set${counts.done === 1 ? "" : "s"} completed${runsDone ? ` · ${runsDone} run${runsDone === 1 ? "" : "s"} done` : ""}`}
         >
           {backdated && (
             <div className="mb-4 space-y-1.5">
@@ -754,9 +875,14 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
           {shortOfPlan && counts.done > 0 && (
             <div className="mb-4"><ShortfallReasonField value={shortfallReason} onChange={setShortfallReason} /></div>
           )}
-          {counts.done === 0 && <p className="mb-4 text-[13.5px] text-muted-foreground">No completed sets yet. You can discard the workout instead.</p>}
+          {runs.length > runsDone && (
+            <p className="mb-4 rounded-md bg-muted px-3 py-2.5 text-[13.5px] text-muted-foreground">
+              {runs.length - runsDone} run{runs.length - runsDone === 1 ? "" : "s"} not marked done will be left out of the record.
+            </p>
+          )}
+          {counts.done === 0 && runsDone === 0 && <p className="mb-4 text-[13.5px] text-muted-foreground">Nothing completed yet. You can discard the workout instead.</p>}
           <div className="flex flex-col gap-2">
-            <Button variant="primary" size="lg" onClick={finish} disabled={busy || counts.done === 0}>
+            <Button variant="primary" size="lg" onClick={finish} disabled={busy || (counts.done === 0 && runsDone === 0)}>
               {busy && <Loader2 className="animate-spin" />} {backdated ? "Save workout" : "Finish & save"}
             </Button>
             <Button variant="ghost" size="lg" onClick={() => setFinishing(false)}>{backdated ? "Keep editing" : "Keep training"}</Button>

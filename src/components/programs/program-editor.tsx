@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { ArrowDown, ArrowUp, ChevronLeft, Copy, Loader2, MoreHorizontal, Plus, Repeat, Star, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, Copy, Footprints, Loader2, MoreHorizontal, Plus, Repeat, Star, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -14,14 +14,34 @@ import { Switch } from "@/components/ui/switch";
 import { ExercisePicker } from "@/components/workout/exercise-picker";
 import { archiveProgram, duplicateProgram, setActiveProgram, snapshotProgram } from "@/lib/data/mutations";
 import type { ProgramFull, TemplateWithExercises } from "@/lib/data/queries";
-import type { ExerciseRow } from "@/lib/data/types";
+import type { ExerciseRow, TemplateRunRow } from "@/lib/data/types";
+import { planProblem, type DistanceUnit } from "@/lib/domain/running";
+import { RunPlanEditor } from "./run-plan-editor";
 import { createClient } from "@/lib/supabase/client";
 import { cn, uuid } from "@/lib/utils";
 import { CategoryBar } from "@/components/ui/category";
 import { workoutCategory } from "@/lib/category";
 
 type TE = TemplateWithExercises["exercises"][number];
-type T = Omit<TemplateWithExercises, "exercises"> & { exercises: TE[]; _new?: boolean };
+type T = Omit<TemplateWithExercises, "exercises" | "runs"> & { exercises: TE[]; runs: TemplateRunRow[]; _new?: boolean };
+
+/** A template's exercises and runs in one order (they share positions). */
+function templateOrder(t: T): ({ kind: "exercise"; e: TE } | { kind: "run"; r: TemplateRunRow })[] {
+  return [
+    ...t.exercises.map((e) => ({ kind: "exercise" as const, e, p: e.position })),
+    ...t.runs.map((r) => ({ kind: "run" as const, r, p: r.position })),
+  ].sort((a, b) => a.p - b.p || (a.kind === b.kind ? 0 : a.kind === "exercise" ? -1 : 1));
+}
+
+/** Renumber a template's exercises and runs 1…n in the given order. */
+function renumber(t: T, order: ReturnType<typeof templateOrder>): T {
+  const pos = new Map(order.map((x, i) => [x.kind === "run" ? x.r.id : x.e.id, i + 1]));
+  return {
+    ...t,
+    exercises: t.exercises.map((e) => ({ ...e, position: pos.get(e.id)! })).sort((a, b) => a.position - b.position),
+    runs: t.runs.map((r) => ({ ...r, position: pos.get(r.id)! })).sort((a, b) => a.position - b.position),
+  };
+}
 
 function NumCell({ value, onChange, label, step = 1, className }: { value: number | null; onChange: (v: number | null) => void; label: string; step?: number; className?: string }) {
   return (
@@ -50,11 +70,12 @@ function planDetails(e: TE): string[] {
   return out;
 }
 
-export function ProgramEditor({ program, library, versions }: { program: ProgramFull; library: ExerciseRow[]; versions: { id: string; version: number; note: string | null; created_at: string }[] }) {
+export function ProgramEditor({ program, library, versions, unit = "km" }: { program: ProgramFull; library: ExerciseRow[]; versions: { id: string; version: number; note: string | null; created_at: string }[]; unit?: DistanceUnit }) {
   const router = useRouter();
   const [name, setName] = useState(program.name);
   const [description, setDescription] = useState(program.description ?? "");
-  const [templates, setTemplates] = useState<T[]>(program.templates);
+  const [templates, setTemplates] = useState<T[]>(() => program.templates.map((t) => renumber({ ...t, runs: t.runs ?? [] }, templateOrder({ ...t, runs: t.runs ?? [] }))));
+  const [removedRuns, setRemovedRuns] = useState<string[]>([]);
   const [removedTemplates, setRemovedTemplates] = useState<string[]>([]);
   const [removedExercises, setRemovedExercises] = useState<string[]>([]);
   const [picker, setPicker] = useState<{ templateId: string; replaceId?: string } | null>(null);
@@ -63,22 +84,35 @@ export function ProgramEditor({ program, library, versions }: { program: Program
   const [note, setNote] = useState("");
 
   function mut(fn: (ts: T[]) => T[]) {
-    setTemplates((cur) => fn(cur.map((t) => ({ ...t, exercises: [...t.exercises] }))));
+    setTemplates((cur) => fn(cur.map((t) => ({ ...t, exercises: [...t.exercises], runs: [...t.runs] }))));
     setDirty(true);
   }
   const patchT = (id: string, patch: Partial<T>) => mut((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   const patchE = (tid: string, eid: string, patch: Partial<TE>) =>
     mut((ts) => ts.map((t) => (t.id === tid ? { ...t, exercises: t.exercises.map((e) => (e.id === eid ? { ...e, ...patch } : e)) } : t)));
 
+  /** Move an exercise or run one place within its workout. */
   function moveE(tid: string, idx: number, dir: -1 | 1) {
     mut((ts) => ts.map((t) => {
       if (t.id !== tid) return t;
-      const arr = [...t.exercises];
+      const arr = templateOrder(t);
       const j = idx + dir;
       if (j < 0 || j >= arr.length) return t;
       [arr[idx], arr[j]] = [arr[j], arr[idx]];
-      return { ...t, exercises: arr };
+      return renumber(t, arr);
     }));
+  }
+
+  const nextPos = (t: T) => Math.max(0, ...t.exercises.map((e) => e.position), ...t.runs.map((r) => r.position)) + 1;
+  const patchR = (tid: string, rid: string, patch: Partial<TemplateRunRow>) =>
+    mut((ts) => ts.map((t) => (t.id === tid ? { ...t, runs: t.runs.map((r) => (r.id === rid ? { ...r, ...patch } : r)) } : t)));
+  function addRun(tid: string) {
+    mut((ts) => ts.map((t) => (t.id === tid ? {
+      ...t, runs: [...t.runs, {
+        id: uuid(), template_id: t.id, position: nextPos(t), name: "Run", setting: null, target_kind: "open", target_duration_s: null,
+        target_distance_m: null, interval_count: null, interval_work_s: null, interval_work_m: null, interval_recovery_s: null, optional: false, notes: null,
+      }],
+    } : t)));
   }
 
   function moveT(idx: number, dir: -1 | 1) {
@@ -93,7 +127,7 @@ export function ProgramEditor({ program, library, versions }: { program: Program
       mut((ts) => ts.map((t) => t.id === picker.templateId ? {
         ...t,
         exercises: [...t.exercises, {
-          id: uuid(), template_id: t.id, exercise_id: ex.id, exercise: ex, position: t.exercises.length,
+          id: uuid(), template_id: t.id, exercise_id: ex.id, exercise: ex, position: nextPos(t),
           sets: ex.default_sets, rep_min: ex.default_rep_min, rep_max: ex.default_rep_max, rest_s: ex.default_rest_s,
           target_rir: null, optional: false, notes: null,
         }],
@@ -103,14 +137,14 @@ export function ProgramEditor({ program, library, versions }: { program: Program
 
   function addTemplate() {
     const id = uuid();
-    mut((ts) => [...ts, { id, program_id: program.id, name: "New workout", day_of_week: null, position: ts.length, notes: null, warmup_notes: null, exercises: [], _new: true }]);
+    mut((ts) => [...ts, { id, program_id: program.id, name: "New workout", day_of_week: null, position: ts.length, notes: null, warmup_notes: null, exercises: [], runs: [], _new: true }]);
   }
 
   function duplicateT(t: T) {
     const id = uuid();
     mut((ts) => {
       const i = ts.findIndex((x) => x.id === t.id);
-      const copy: T = { ...t, id, name: `${t.name} (copy)`, day_of_week: null, _new: true, exercises: t.exercises.map((e) => ({ ...e, id: uuid(), template_id: id })) };
+      const copy: T = { ...t, id, name: `${t.name} (copy)`, day_of_week: null, _new: true, exercises: t.exercises.map((e) => ({ ...e, id: uuid(), template_id: id })), runs: t.runs.map((r) => ({ ...r, id: uuid(), template_id: id })) };
       ts.splice(i + 1, 0, copy);
       return [...ts];
     });
@@ -124,27 +158,41 @@ export function ProgramEditor({ program, library, versions }: { program: Program
         if (!(e.rep_min >= 1 && e.rep_max >= e.rep_min && e.rep_max <= 100)) return toast.error(`${e.exercise.name}: check the rep range.`);
         if (!(e.rest_s >= 0 && e.rest_s <= 1800)) return toast.error(`${e.exercise.name}: rest must be 0–1800 s.`);
       }
+      for (const r of t.runs) {
+        if (!r.name.trim()) return toast.error(`${t.name}: every run needs a name.`);
+        const problem = planProblem(r);
+        if (problem) return toast.error(`${t.name} · ${r.name}: ${problem}`);
+      }
     }
     setBusy(true);
     const db = createClient();
     try {
       const r1 = await db.from("programs").update({ name: name.trim() || program.name, description: description || null }).eq("id", program.id);
       if (r1.error) throw r1.error;
+      if (removedRuns.length) { const r = await db.from("template_runs").delete().in("id", removedRuns); if (r.error) throw r.error; }
       if (removedExercises.length) { const r = await db.from("template_exercises").delete().in("id", removedExercises); if (r.error) throw r.error; }
       if (removedTemplates.length) { const r = await db.from("workout_templates").delete().in("id", removedTemplates); if (r.error) throw r.error; }
       const tRows = templates.map((t, i) => ({ id: t.id, program_id: program.id, name: t.name.trim(), day_of_week: null, position: i + 1, notes: t.notes, warmup_notes: t.warmup_notes }));
       if (tRows.length) { const r = await db.from("workout_templates").upsert(tRows); if (r.error) throw r.error; }
-      const eRows = templates.flatMap((t) => t.exercises.map((e, i) => ({
-        id: e.id, template_id: t.id, exercise_id: e.exercise_id, position: i + 1, sets: e.sets, rep_min: e.rep_min, rep_max: e.rep_max,
+      const eRows = templates.flatMap((t) => t.exercises.map((e) => ({
+        id: e.id, template_id: t.id, exercise_id: e.exercise_id, position: e.position, sets: e.sets, rep_min: e.rep_min, rep_max: e.rep_max,
         rest_s: e.rest_s, target_rir: e.target_rir, optional: e.optional, notes: e.notes,
       })));
       if (eRows.length) { const r = await db.from("template_exercises").upsert(eRows); if (r.error) throw r.error; }
+      const rRows = templates.flatMap((t) => t.runs.map((r) => ({
+        id: r.id, template_id: t.id, position: r.position, name: r.name.trim(), setting: r.setting, target_kind: r.target_kind,
+        target_duration_s: r.target_duration_s, target_distance_m: r.target_distance_m, interval_count: r.interval_count,
+        interval_work_s: r.interval_work_s, interval_work_m: r.interval_work_m, interval_recovery_s: r.interval_recovery_s,
+        optional: r.optional, notes: r.notes,
+      })));
+      if (rRows.length) { const r = await db.from("template_runs").upsert(rRows); if (r.error) throw r.error; }
       const v = await snapshotProgram(db, program.id, note.trim() || undefined);
       toast.success(`Saved as version ${v}`);
       setDirty(false);
       setNote("");
       setRemovedExercises([]);
       setRemovedTemplates([]);
+      setRemovedRuns([]);
       router.refresh();
     } catch (e) {
       toast.error((e as Error).message);
@@ -197,14 +245,18 @@ export function ProgramEditor({ program, library, versions }: { program: Program
             <Input value={t.warmup_notes ?? ""} onChange={(e) => patchT(t.id, { warmup_notes: e.target.value || null })} placeholder="Warm-up notes" className="mb-3 h-9 text-[13px]" />
 
             <div className="space-y-2">
-              {t.exercises.map((e, ei) => (
+              {templateOrder(t).map((x, ei, order) => x.kind === "run" ? (
+                <RunPlanEditor key={x.r.id} run={x.r} unit={unit} index={ei + 1} isFirst={ei === 0} isLast={ei === order.length - 1}
+                  onChange={(patch) => patchR(t.id, x.r.id, patch)} onMove={(d) => moveE(t.id, ei, d)}
+                  onRemove={() => { mut((ts) => ts.map((y) => (y.id === t.id ? { ...y, runs: y.runs.filter((r) => r.id !== x.r.id) } : y))); setRemovedRuns((r) => [...r, x.r.id]); }} />
+              ) : ((e) => (
                 <div key={e.id} className="rounded-md border bg-muted/40 p-3">
                   <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="w-5 text-[12px] font-semibold text-muted-foreground tabular">{ei + 1}</span>
                     <span className="min-w-[9rem] flex-1 text-[14px] font-semibold leading-snug">{e.exercise.name}</span>
                     <span className="ml-auto flex items-center">
                     <button aria-label="Move up" disabled={ei === 0} onClick={() => moveE(t.id, ei, -1)} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-30"><ArrowUp className="size-4" /></button>
-                    <button aria-label="Move down" disabled={ei === t.exercises.length - 1} onClick={() => moveE(t.id, ei, 1)} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-30"><ArrowDown className="size-4" /></button>
+                    <button aria-label="Move down" disabled={ei === order.length - 1} onClick={() => moveE(t.id, ei, 1)} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-30"><ArrowDown className="size-4" /></button>
                     <button aria-label="Substitute exercise" onClick={() => setPicker({ templateId: t.id, replaceId: e.id })} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-muted"><Repeat className="size-4" /></button>
                     <button aria-label="Remove exercise" onClick={() => { mut((ts) => ts.map((x) => (x.id === t.id ? { ...x, exercises: x.exercises.filter((y) => y.id !== e.id) } : x))); setRemovedExercises((r) => [...r, e.id]); }} className="grid size-8 place-items-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>
                     </span>
@@ -224,9 +276,12 @@ export function ProgramEditor({ program, library, versions }: { program: Program
                     <label className="flex items-center gap-2 text-[12px] text-muted-foreground">Optional <Switch checked={e.optional} onCheckedChange={(c) => patchE(t.id, e.id, { optional: c })} /></label>
                   </div>
                 </div>
-              ))}
+              ))(x.e))}
             </div>
-            <Button variant="ghost" size="sm" className="mt-2" onClick={() => setPicker({ templateId: t.id })}><Plus /> Add exercise</Button>
+            <div className="mt-2 flex flex-wrap gap-1">
+              <Button variant="ghost" size="sm" onClick={() => setPicker({ templateId: t.id })}><Plus /> Add exercise</Button>
+              <Button variant="ghost" size="sm" onClick={() => addRun(t.id)}><Footprints /> Add run</Button>
+            </div>
           </Card>
         ))}
         <Button variant="outline" className="w-full" onClick={addTemplate}><Plus /> Add workout</Button>

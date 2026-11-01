@@ -1,5 +1,5 @@
 "use client";
-import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronDown, Info, Plus, Search, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronDown, Footprints, Info, Plus, Search, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,9 @@ import { Switch } from "@/components/ui/switch";
 import { kgToDisplay, displayToKg } from "@/lib/domain/units";
 import type { WeightUnit } from "@/lib/domain/types";
 import { fmtRest } from "@/lib/plan-import/notation";
-import { acknowledge, applyOption, chooseExercise, editExercise, exerciseProblems } from "@/lib/plan-import/review";
+import { acknowledge, applyOption, chooseExercise, editExercise, exerciseProblems, treatAsRun } from "@/lib/plan-import/review";
+import type { DistanceUnit } from "@/lib/domain/running";
+import { RunRowEditor } from "./run-row";
 import type { DraftExercise, DraftValues, ExerciseChoice, Flag, Origin } from "@/lib/plan-import/types";
 import { cn } from "@/lib/utils";
 
@@ -72,18 +74,20 @@ function choiceLabel(c: ExerciseChoice) {
   return c.kind === "catalog" ? `${c.name} (catalog)` : c.name;
 }
 
-export function ExerciseRowEditor({ ex, index, count, unit, defaultRestS, onChange, onMove, onPickLibrary, onCreate }: {
+export function ExerciseRowEditor({ ex, index, count, unit, distUnit = "km", defaultRestS, onChange, onMove, onPickLibrary, onCreate }: {
   ex: DraftExercise;
   index: number;
   count: number;
   unit: WeightUnit;
   defaultRestS: number;
+  distUnit?: DistanceUnit;
   onChange: (next: DraftExercise) => void;
   onMove: (dir: -1 | 1) => void;
   onPickLibrary: () => void;
   onCreate: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  if (ex.run) return <RunRowEditor ex={ex} index={index} count={count} unit={distUnit} onChange={onChange} onMove={onMove} />;
   const problems = exerciseProblems(ex);
   const openFlags = ex.flags.filter((f) => !f.resolved && f.field !== "exercise");
   const edit = (patch: Partial<DraftValues>) => onChange(editExercise(ex, patch));
@@ -115,6 +119,7 @@ export function ExerciseRowEditor({ ex, index, count, unit, defaultRestS, onChan
             ))}
             <button type="button" onClick={onPickLibrary} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium text-accent"><Search className="size-3" /> Choose</button>
             <button type="button" onClick={onCreate} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium text-accent"><Plus className="size-3" /> Create custom exercise</button>
+            <button type="button" onClick={() => onChange(treatAsRun(ex))} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium text-accent"><Footprints className="size-3" /> This is a run</button>
           </div>
         </div>
         <span className="ml-auto flex items-center">

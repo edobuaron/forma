@@ -89,6 +89,9 @@ export function SettingsForm({ profile, email }: { profile: ProfileRow; email?: 
         <Row label="Weight unit" sub="Data is stored in kg; display converts">
           <Segmented value={p.unit} onChange={(u) => save({ unit: u })} options={[{ value: "kg", label: "kg" }, { value: "lb", label: "lb" }]} />
         </Row>
+        <Row label="Distance unit" sub="For runs. Data is stored in metres; display converts">
+          <Segmented value={p.distance_unit === "mi" ? "mi" : "km"} onChange={(u) => save({ distance_unit: u })} options={[{ value: "km", label: "km" }, { value: "mi", label: "miles" }]} />
+        </Row>
         <Row label="Default rest" sub="Used when an exercise has no rest set">
           <div className="flex items-center gap-2">
             <Input aria-label="Default rest in seconds" inputMode="numeric" defaultValue={p.default_rest_s} className="h-9 w-20 text-right"
@@ -128,6 +131,9 @@ export function SettingsForm({ profile, email }: { profile: ProfileRow; email?: 
         </Row>
         <Row label="Set log" sub="One row per set, for spreadsheets">
           <Button asChild variant="outline" size="sm"><a href="/api/export?format=csv&type=sets"><Download /> CSV</a></Button>
+        </Row>
+        <Row label="Run log" sub="One row per run: planned target and result">
+          <Button asChild variant="outline" size="sm"><a href="/api/export?format=csv&type=runs"><Download /> CSV</a></Button>
         </Row>
         <Row label="Body measurements">
           <Button asChild variant="outline" size="sm"><a href="/api/export?format=csv&type=body"><Download /> CSV</a></Button>

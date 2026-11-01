@@ -9,8 +9,10 @@ import { Card } from "@/components/ui/card";
 import { CategoryBar } from "@/components/ui/category";
 import { workoutCategory } from "@/lib/category";
 import { EmptyState, PageHeader } from "@/components/ui/misc";
-import { getActiveProgram, listSessions, toDayWorkout, toStartTemplates } from "@/lib/data/queries";
+import { getActiveProgram, getProfile, listSessions, toDayWorkout, toStartTemplates } from "@/lib/data/queries";
 import { requireUser } from "@/lib/supabase/server";
+import { distanceUnit } from "@/lib/data/types";
+import { sessionLine } from "@/lib/session-text";
 import { formatMinutes } from "@/lib/utils";
 
 export const metadata = { title: "History" };
@@ -18,6 +20,7 @@ export const metadata = { title: "History" };
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
   const { supabase } = await requireUser();
+  const distUnit = distanceUnit(await getProfile(supabase));
   const today = new Date();
   const month = sp.m && /^\d{4}-\d{2}$/.test(sp.m) ? new Date(`${sp.m}-01T00:00:00`) : startOfMonth(today);
   const gridStart = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
@@ -82,7 +85,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">{s.name}{s.shortfall_reason && <Badge tone="neutral"><Clock aria-hidden /> Shortened</Badge>}</p>
                       <p className="text-[13px] text-muted-foreground tabular">
-                        {s.exercise_count} exercises · {s.set_count} sets{s.ended_at && ` · ${formatMinutes(new Date(s.ended_at).getTime() - new Date(s.started_at).getTime())}`}
+                        {sessionLine(s, distUnit)}{s.ended_at && ` · ${formatMinutes(new Date(s.ended_at).getTime() - new Date(s.started_at).getTime())}`}
                         {s.energy_rating != null && <span className="text-muted-foreground/80"> · <span className="sr-only">starting </span>energy {s.energy_rating}/10</span>}
                       </p>
                     </div>

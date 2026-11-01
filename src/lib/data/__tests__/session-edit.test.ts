@@ -128,3 +128,33 @@ describe("history editor: warm-ups and drops", () => {
     expect(validateDraft(d)).toMatch(/drop must follow its working set/);
   });
 });
+
+describe("runs in the history editor (migration 016)", () => {
+  const run = (o: Record<string, unknown>) => ({
+    id: "run1", session_id: "s1", template_run_id: null, position: 1, name: "Easy run", prescribed: { target_kind: "time", target_duration_s: 1800 },
+    setting: null, duration_s: 1750, distance_m: "5000.0", effort: null, intervals_done: null, notes: null, completed: true, completed_at: null, ...o,
+  });
+  const mixed = (runs: Record<string, unknown>[]) => ({ ...session([set({ assistance_kg: 0 })]), runs } as unknown as SessionFull);
+
+  it("loads runs with numeric distances and keeps the shared order of exercises and runs", () => {
+    const d = draftFromSession(mixed([run({ position: 0 }), run({ id: "run2", position: 2 })]));
+    expect(d.runs[0].distance_m).toBe(5000);
+    const edit = toSessionEdit(d);
+    // run1 (0) · exercise (0 → after the tie, exercises first) · run2 (2)
+    expect(edit.exercises[0].position).toBe(0);
+    expect(edit.runs.map((r) => [r.id, r.position])).toEqual([["run1", 1], ["run2", 2]]);
+    expect(edit.runs[0].prescribed).toEqual({ target_kind: "time", target_duration_s: 1800 });
+  });
+
+  it("requires a time for every saved run; a missing distance is fine", () => {
+    expect(validateDraft(draftFromSession(mixed([run({ duration_s: null })])))).toMatch(/Easy run: Enter how long/);
+    expect(validateDraft(draftFromSession(mixed([run({ distance_m: null })])))).toBeNull();
+    expect(validateDraft(draftFromSession(mixed([run({ duration_s: 300, distance_m: 10000 })])))).toMatch(/faster than anyone/);
+  });
+
+  it("an older workout without runs saves an empty list", () => {
+    const edit = toSessionEdit(draftFromSession(session([set({ assistance_kg: 0 })])));
+    expect(edit.runs).toEqual([]);
+    expect(savedDraft(draftFromSession(session([set({ assistance_kg: 0 })]))).runs).toEqual([]);
+  });
+});

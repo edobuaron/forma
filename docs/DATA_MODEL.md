@@ -41,6 +41,7 @@ Sessions reference templates with `on delete set null`; they never depend on the
 | `body_measurements` | Dated body metrics | one row per user per day |
 | `personal_records` | Derived PRs | recomputed from history after a workout or an edit; can always be rebuilt |
 | `dismissed_recommendations` | Dismissed suggestions/insights | keyed by rule + evidence session, so a dismissal expires when new evidence appears |
+| `template_runs` / `session_runs` | Planned runs and logged runs (migration 016) | see Running below |
 | `attachments` | Cable attachments (migration 011) | private per user; starter list seeded once (`profiles.attachments_seeded_at`); `archived_at` when history uses one that was removed |
 
 ## Read model and RPCs
@@ -81,6 +82,14 @@ Sessions reference templates with `on delete set null`; they never depend on the
 - NULL means not answered: skipped, a workout logged for a past day without a rating, or any workout from before 015. There is no default.
 - Asked before a workout starts today (Skip starts without one); editable from the workout options and in History. It is written with a plain owner update, so `finish_workout` and `save_session_edit` leave it alone.
 - Nothing reads it to change progression, recommendations or records. Labels: `src/lib/domain/energy.ts`.
+
+## Running (migration 016)
+
+- Runs live in their own tables and never in `set_logs`, so they can't reach lifting volume, working-set counts, comparisons, progression or records (all of which read `set_logs` / `set_history`).
+- `template_runs` is the plan: `target_kind` open / time / distance / intervals, with exactly that kind's fields (`target_duration_s`, `target_distance_m`, or `interval_count` + `interval_work_s` **or** `interval_work_m` + optional `interval_recovery_s`), optional `setting` (outdoor / treadmill), `optional`, `notes`. Runs share the template's position space with its exercises.
+- `session_runs` is what happened: `prescribed` (the plan copied at start, `{}` for an unplanned run) and the results `duration_s` (required to complete), `distance_m` (optional; missing stays null), `effort` 1–10, `intervals_done`, `setting` (null = not recorded), `notes`, `completed`. Client-generated ids, autosaved like sets. A completed run faster than 11 m/s is refused as an entry error.
+- Pace is derived, never stored, and only when both distance and duration exist. No calories, GPS or heart rate. Distances are metres; `profiles.distance_unit` (km / mi) is display only. Rules: `src/lib/domain/running.ts`.
+- RPCs: `start_run_on(started_at)` starts a standalone run; `start_workout_on` copies a template's runs; `finish_workout` accepts a workout with only runs done and removes runs not marked done; `save_session_edit(…, p_runs)` edits runs in History (NULL leaves them untouched; exercises may carry `position` so the shared order survives); `create_program_from_import` accepts `{"kind": "run", …}` items.
 
 ## Weighted bodyweight movements
 

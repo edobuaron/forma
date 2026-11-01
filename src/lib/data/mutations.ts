@@ -27,6 +27,16 @@ export async function startWorkout(db: DB, templateId: string | null, opts: { na
   return ok(res) as string;
 }
 
+/** Start a standalone run now, or log one for a past day (migration 016). */
+export async function startRun(db: DB, opts: { startedAt?: Date } = {}): Promise<string> {
+  const res = await db.rpc("start_run_on", { p_started_at: opts.startedAt?.toISOString() ?? null });
+  if (res.error?.message === "workout_in_progress") {
+    throw Object.assign(new Error("A workout is already in progress."), { code: "in_progress", sessionId: res.error.details });
+  }
+  if (res.error?.message === "future_date") throw new Error("Workouts can't be logged for a future day.");
+  return ok(res) as string;
+}
+
 export async function finishWorkout(db: DB, sessionId: string, notes: string | null, endedAt = new Date(), shortfallReason: ShortfallReason | null = null) {
   ok(await db.rpc("finish_workout", { p_session_id: sessionId, p_notes: notes, p_ended_at: endedAt.toISOString(), p_shortfall_reason: shortfallReason }));
 }
@@ -88,11 +98,14 @@ const EDIT_ERRORS: Record<string, string> = {
   missing_weight: "enter a weight for every set.",
   missing_assistance: "enter the assistance for every set (0 if none).",
   missing_side: "a set tracked by side needs at least one side. Remove the set if neither side was done.",
+  missing_run_duration: "enter how long the run took.",
+  invalid_run_distance: "check the distance; it isn't possible in that time.",
+  invalid_run: "a value is out of range.",
 };
 
 /** Save an edited past workout. All-or-nothing: on any error the stored workout is unchanged. */
 export async function saveSessionEdit(db: DB, sessionId: string, edit: SessionEdit) {
-  const res = await db.rpc("save_session_edit", { p_session_id: sessionId, p_session: edit.session, p_exercises: edit.exercises });
+  const res = await db.rpc("save_session_edit", { p_session_id: sessionId, p_session: edit.session, p_exercises: edit.exercises, p_runs: edit.runs });
   const friendly = res.error && EDIT_ERRORS[res.error.message];
   if (friendly) throw new Error(`${res.error!.details}: ${friendly}`);
   ok(res);
@@ -211,18 +224,23 @@ export async function snapshotProgram(db: DB, id: string, note?: string) {
 }
 
 export async function duplicateProgram(db: DB, id: string): Promise<string> {
-  const src = ok(await db.from("programs").select("*, templates:workout_templates(*, exercises:template_exercises(*))").eq("id", id).single()) as {
+  const src = ok(await db.from("programs").select("*, templates:workout_templates(*, exercises:template_exercises(*), runs:template_runs(*))").eq("id", id).single()) as {
     name: string; description: string | null;
     templates: { name: string; day_of_week: number | null; position: number; notes: string | null; warmup_notes: string | null;
-      exercises: { exercise_id: string; position: number; sets: number; rep_min: number; rep_max: number; rest_s: number; target_rir: number | null; optional: boolean; notes: string | null }[] }[];
+      exercises: Record<string, unknown>[]; runs?: Record<string, unknown>[] }[];
   };
+  // A copy gets new row ids; owner and timestamps are set by the database.
+  const fresh = ({ id: _i, user_id: _u, template_id: _t, created_at: _c, updated_at: _up, ...row }: Record<string, unknown>) => row;
   const p = ok(await db.from("programs").insert({ name: `${src.name} (copy)`, description: src.description }).select("id").single()) as { id: string };
   for (const t of src.templates) {
     const nt = ok(await db.from("workout_templates").insert({
       program_id: p.id, name: t.name, day_of_week: t.day_of_week, position: t.position, notes: t.notes, warmup_notes: t.warmup_notes,
     }).select("id").single()) as { id: string };
     if (t.exercises.length) {
-      ok(await db.from("template_exercises").insert(t.exercises.map((e) => ({ ...e, template_id: nt.id }))));
+      ok(await db.from("template_exercises").insert(t.exercises.map((e) => ({ ...fresh(e), template_id: nt.id }))));
+    }
+    if (t.runs?.length) {
+      ok(await db.from("template_runs").insert(t.runs.map((r) => ({ ...fresh(r), template_id: nt.id }))));
     }
   }
   await snapshotProgram(db, p.id, "Duplicated");
@@ -234,15 +252,18 @@ export async function createTemplate(db: DB, programId: string, name: string, po
 }
 
 export async function duplicateTemplate(db: DB, templateId: string) {
-  const t = ok(await db.from("workout_templates").select("*, exercises:template_exercises(*)").eq("id", templateId).single()) as {
+  const t = ok(await db.from("workout_templates").select("*, exercises:template_exercises(*), runs:template_runs(*)").eq("id", templateId).single()) as {
     program_id: string; name: string; position: number; notes: string | null; warmup_notes: string | null;
-    exercises: Record<string, unknown>[];
+    exercises: Record<string, unknown>[]; runs?: Record<string, unknown>[];
   };
   const nt = ok(await db.from("workout_templates").insert({
     program_id: t.program_id, name: `${t.name} (copy)`, position: t.position + 1, notes: t.notes, warmup_notes: t.warmup_notes,
   }).select("id").single()) as { id: string };
   if (t.exercises.length) {
     ok(await db.from("template_exercises").insert(t.exercises.map(({ id: _id, created_at: _c, updated_at: _u, template_id: _t, ...e }) => ({ ...e, template_id: nt.id }))));
+  }
+  if (t.runs?.length) {
+    ok(await db.from("template_runs").insert(t.runs.map(({ id: _id, user_id: _o, created_at: _c, updated_at: _u, template_id: _t, ...r }) => ({ ...r, template_id: nt.id }))));
   }
   return nt.id;
 }

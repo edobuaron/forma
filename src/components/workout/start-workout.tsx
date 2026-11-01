@@ -1,11 +1,11 @@
 "use client";
 import { formatDistanceToNowStrict, isToday } from "date-fns";
-import { ArrowRight, Loader2, Plus } from "lucide-react";
+import { ArrowRight, Footprints, Loader2, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { setEnergyRating, startWorkout } from "@/lib/data/mutations";
+import { setEnergyRating, startRun, startWorkout } from "@/lib/data/mutations";
 import type { StartTemplate } from "@/lib/data/queries";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -28,11 +28,14 @@ export function useStartWorkout() {
   const [busy, setBusy] = useState<string | null>(null);
   const [asking, setAsking] = useState<{ templateId: string | null } | null>(null);
 
+  /** templateId "run" starts a standalone run. */
   async function begin(templateId: string | null, day: Date | undefined, energy: number | null) {
     setBusy(templateId ?? "empty");
     const db = createClient();
     try {
-      const id = await startWorkout(db, templateId, { startedAt: startTimeFor(day) });
+      const id = templateId === "run"
+        ? await startRun(db, { startedAt: startTimeFor(day) })
+        : await startWorkout(db, templateId, { startedAt: startTimeFor(day) });
       if (energy != null) {
         try {
           await setEnergyRating(db, id, energy);
@@ -92,7 +95,7 @@ export function StartWorkout({ templates, day, compact = false }: { templates: S
           <div className="min-w-0 flex-1">
             <span className={cn("font-semibold tracking-tight", compact ? "text-[15.5px]" : "text-[17px]")}>{t.name}</span>
             <p className="mt-0.5 text-[13px] text-muted-foreground">
-              {t.exerciseCount} exercises · {t.setCount} sets
+              {[t.exerciseCount ? `${t.exerciseCount} exercises · ${t.setCount} sets` : null, t.runCount ? `${t.runCount} run${t.runCount === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ") || "Empty"}
               {t.lastDone ? ` · last ${formatDistanceToNowStrict(new Date(t.lastDone), { addSuffix: true })}` : " · not done yet"}
             </p>
             {!compact && <p className="mt-2 line-clamp-1 text-[13px] text-muted-foreground/80">{t.exercises.join(" · ")}</p>}
@@ -100,9 +103,14 @@ export function StartWorkout({ templates, day, compact = false }: { templates: S
           {busy === t.id ? <Loader2 className="size-5 animate-spin text-muted-foreground" /> : <ArrowRight className="size-5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />}
         </button>
       ))}
-      <Button variant="outline" size={compact ? "md" : "lg"} className="w-full" disabled={!!busy} onClick={() => start(null, day)}>
-        {busy === "empty" ? <Loader2 className="animate-spin" /> : <Plus />} Empty workout
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" size={compact ? "md" : "lg"} className="w-full" disabled={!!busy} onClick={() => start(null, day)}>
+          {busy === "empty" ? <Loader2 className="animate-spin" /> : <Plus />} Empty workout
+        </Button>
+        <Button variant="outline" size={compact ? "md" : "lg"} className="w-full" disabled={!!busy} onClick={() => start("run", day)}>
+          {busy === "run" ? <Loader2 className="animate-spin" /> : <Footprints />} Log a run
+        </Button>
+      </div>
     </div>
   );
 }

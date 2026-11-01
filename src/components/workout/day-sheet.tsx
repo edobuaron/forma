@@ -32,7 +32,7 @@ export function DaySheet({
                   <div className="min-w-0 flex-1">
                     <p className="text-[15px] font-medium">{w.name}</p>
                     <p className="text-[13px] text-muted-foreground tabular">
-                      {w.setCount} sets{w.minutes != null && ` · ${formatMinutes(w.minutes * 60000)}`}
+                      {[w.setCount ? `${w.setCount} sets` : null, w.runCount ? `${w.runCount} run${w.runCount === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ") || "0 sets"}{w.minutes != null && ` · ${formatMinutes(w.minutes * 60000)}`}
                     </p>
                   </div>
                   <ChevronRight className="size-4 text-muted-foreground" />

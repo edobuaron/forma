@@ -5,6 +5,7 @@ import { exerciseInsights, insightCoverage, sidesCoverageInsight, volumeInsights
 import { recommendFor, type Recommendation } from "@/lib/domain/progression";
 import type { ExerciseConfig } from "@/lib/domain/types";
 import { format } from "date-fns";
+import { runTotals } from "@/lib/domain/running";
 import {
   completedSetHistory, getActiveProgram, getProfile, groupHistory, listDismissed, listExercises, listSessions,
   recentHistory, recentRecords, toDayWorkout, toStartTemplates,
@@ -135,6 +136,8 @@ export async function loadDashboard(db: SupabaseClient) {
     templates: startTemplates,
     week,
     weekCompleted: weekSessions.length,
+    /** This week's completed runs; kept apart from working sets and volume. */
+    weekRunning: runTotals(weekSessions.flatMap((s) => s.runs ?? [])),
     lastWeekCompleted: recent.filter((s) => weekStart(new Date(s.started_at)) === lastWeek).length,
     recent: recent.slice(0, 5),
     /** Template of each recent completed session, newest first (for the dashboard's next-workout choice). */

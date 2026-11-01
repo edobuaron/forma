@@ -4,6 +4,7 @@ import type {
   SetKind, ShortfallReason, WeightUnit,
 } from "@/lib/domain/types";
 import type { SideColumns } from "@/lib/domain/set-validation";
+import type { DistanceUnit, RunPlan, RunSetting, RunTargetKind } from "@/lib/domain/running";
 
 /** What the weight field means for an exercise. "assistance" added in migration 009. */
 export type WeightConvention = "total" | "per_side" | "per_dumbbell" | "stack" | "added" | "assistance";
@@ -25,6 +26,8 @@ export interface ProfileRow {
   starter_version: number | null;
   /** Muscles kept at maintenance volume (migration 012). Empty = no focus. Read via maintenanceMuscles(). */
   maintenance_muscles?: string[] | null;
+  /** How distances are shown and typed (migration 016); stored distances are always metres. Read via distanceUnit(). */
+  distance_unit?: DistanceUnit | null;
   created_at: string;
 }
 
@@ -124,6 +127,42 @@ export interface TemplateExerciseRow {
   /** Reps are per side; the set count is unchanged. */
   per_side?: boolean;
   superset_group?: string | null;
+}
+
+/** A prescribed run in a template (migration 016). Shares the template's position space with its exercises. */
+export interface TemplateRunRow {
+  id: string;
+  template_id: string;
+  position: number;
+  name: string;
+  setting: RunSetting | null;
+  target_kind: RunTargetKind;
+  target_duration_s: number | null;
+  target_distance_m: number | null;
+  interval_count: number | null;
+  interval_work_s: number | null;
+  interval_work_m: number | null;
+  interval_recovery_s: number | null;
+  optional: boolean;
+  notes: string | null;
+}
+
+/** A run in a workout (migration 016): the plan snapshot in `prescribed`, results in their own columns. */
+export interface SessionRunRow {
+  id: string;
+  session_id: string;
+  template_run_id: string | null;
+  position: number;
+  name: string;
+  prescribed: RunPlan;
+  setting: RunSetting | null;
+  duration_s: number | null;
+  distance_m: number | null;
+  effort: number | null;
+  intervals_done: number | null;
+  notes: string | null;
+  completed: boolean;
+  completed_at: string | null;
 }
 
 export interface SessionRow {
@@ -352,6 +391,25 @@ export function rowDropVolumeKg(r: CountRow): number {
 /** The logging context a new workout would start in for this exercise (its defaults). */
 export function defaultContext(e: Pick<ExerciseRow, "track_sides" | "default_attachment_state" | "default_attachment_id">): { sides: boolean; attachment: AttachmentRef } {
   return { sides: e.track_sides, attachment: { state: e.default_attachment_state, id: e.default_attachment_id, name: null } };
+}
+
+/** The profile's distance unit; km when unset or before migration 016 is applied. */
+export function distanceUnit(p: Pick<ProfileRow, "distance_unit">): DistanceUnit {
+  return p.distance_unit === "mi" ? "mi" : "km";
+}
+
+/** The plan part of a template run, as copied into a workout (mirrors run_prescription() in migration 016). */
+export function toRunPlan(r: Omit<TemplateRunRow, "id" | "template_id" | "position" | "name">): RunPlan {
+  const out: RunPlan = { target_kind: r.target_kind, optional: r.optional };
+  for (const k of ["target_duration_s", "target_distance_m", "interval_count", "interval_work_s", "interval_work_m", "interval_recovery_s", "setting", "notes"] as const) {
+    if (r[k] != null) (out as Record<string, unknown>)[k] = k === "target_distance_m" || k === "interval_work_m" ? Number(r[k]) : r[k];
+  }
+  return out;
+}
+
+/** numeric columns arrive as strings from PostgREST. */
+export function normalizeRun<T extends Pick<SessionRunRow, "distance_m">>(r: T): T {
+  return { ...r, distance_m: r.distance_m == null ? null : Number(r.distance_m) };
 }
 
 /** The profile's maintenance muscles; [] when unset or before migration 012 is applied. */

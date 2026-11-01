@@ -1,5 +1,7 @@
 // Editing a draft in the review screen, validating it, and turning it into what the server receives. Pure.
 import type { DraftExercise, DraftValues, ExerciseChoice, Flag, FlagField, PlanDraft } from "./types";
+import { normalizePlan, planProblem } from "@/lib/domain/running";
+import { EMPTY_RUN, readRun, type DraftRun } from "./running";
 
 const FIELD_OF: Record<keyof DraftValues, FlagField> = {
   sets: "sets", repMin: "reps", repMax: "reps", restS: "rest", loadKg: "load", targetRir: "effort", targetRpe: "effort",
@@ -27,6 +29,13 @@ export function editExercise(ex: DraftExercise, patch: Partial<DraftValues>): Dr
 }
 
 export function applyOption(ex: DraftExercise, flagId: string, optionIndex: number): DraftExercise {
+  const rf = ex.runFlags?.find((x) => x.id === flagId);
+  if (rf) {
+    const opt = rf.options?.[optionIndex];
+    if (!opt || !ex.run) return ex;
+    const next = editRun(ex, opt.runPatch ?? {});
+    return { ...next, runFlags: next.runFlags!.map((x) => (x.id === flagId ? { ...x, resolved: true } : x)) };
+  }
   const f = ex.flags.find((x) => x.id === flagId);
   const opt = f?.options?.[optionIndex];
   if (!f || !opt) return ex;
@@ -36,7 +45,33 @@ export function applyOption(ex: DraftExercise, flagId: string, optionIndex: numb
 
 /** "Keep as written" for a non-blocking flag. */
 export function acknowledge(ex: DraftExercise, flagId: string): DraftExercise {
-  return { ...ex, flags: ex.flags.map((x) => (x.id === flagId && !x.blocking ? { ...x, resolved: true } : x)) };
+  const ack = (x: Flag) => (x.id === flagId && !x.blocking ? { ...x, resolved: true } : x);
+  return { ...ex, flags: ex.flags.map(ack), ...(ex.runFlags ? { runFlags: ex.runFlags.map(ack) } : {}) };
+}
+
+/** The user edited a planned run. Questions about its target count as answered once a target is set. */
+export function editRun(ex: DraftExercise, patch: Partial<DraftRun>): DraftExercise {
+  if (!ex.run) return ex;
+  const run = normalizePlan({ ...ex.run, ...patch }) as DraftRun;
+  const targetSet = "target_kind" in patch || "target_duration_s" in patch || "target_distance_m" in patch || "interval_count" in patch
+    || "interval_work_s" in patch || "interval_work_m" in patch;
+  const recoverySet = "interval_recovery_s" in patch;
+  return {
+    ...ex, run,
+    runFlags: (ex.runFlags ?? []).map((f) => ((targetSet && f.field === "row") || (recoverySet && f.field === "rest") ? { ...f, resolved: true } : f)),
+  };
+}
+
+/** "This is a run": read the row as a running prescription (its questions start fresh). */
+export function treatAsRun(ex: DraftExercise): DraftExercise {
+  const text = ex.original.map((o) => o.text);
+  const r = readRun(ex.name, text.slice(1).join(" "), undefined, true);
+  return { ...ex, run: r?.run ?? { ...EMPTY_RUN, name: ex.name || "Run" }, runFlags: r?.flags ?? [], runNotes: ex.runNotes ?? (r?.notes.join("\n") || null) };
+}
+
+/** "Not a run": use the row as an exercise again, with its original lifting reading. */
+export function treatAsExercise(ex: DraftExercise): DraftExercise {
+  return { ...ex, run: null };
 }
 
 export function chooseExercise(ex: DraftExercise, choice: ExerciseChoice): DraftExercise {
@@ -72,6 +107,13 @@ const int = (n: number | null, lo: number, hi: number) => n != null && Number.is
 export function exerciseProblems(ex: DraftExercise): string[] {
   if (ex.skipped) return [];
   const p: string[] = [];
+  if (ex.run) {
+    if (!ex.run.name.trim()) p.push("Name the run.");
+    for (const f of ex.runFlags ?? []) if (f.blocking && !f.resolved) p.push(f.message);
+    const problem = planProblem(ex.run);
+    if (problem) p.push(problem);
+    return [...new Set(p)];
+  }
   if (ex.match.status !== "confirmed" || !ex.match.choice) p.push("Choose the exercise.");
   if (!int(ex.sets, 1, 20)) p.push("Sets must be a whole number from 1 to 20.");
   if (!int(ex.repMin, 1, 100) || !int(ex.repMax, 1, 100) || ex.repMin! > ex.repMax!) p.push("Reps must be 1–100, minimum no higher than maximum.");
@@ -122,7 +164,10 @@ export function toPayload(draft: PlanDraft, defaultRestS: number): ProgramPayloa
       .map(({ w, exercises }) => ({
         name: w.name.trim(),
         warmup_notes: w.warmupNotes,
-        exercises: exercises.map((e) => ({
+        exercises: exercises.map((e) => e.run ? {
+          kind: "run", name: e.run.name.trim() || "Run", setting: e.run.setting, ...normalizePlan(e.run), optional: e.optional,
+          notes: e.runNotes ?? null,
+        } : ({
           ...(e.match.choice!.kind === "library" ? { exercise_id: e.match.choice!.id } : { catalog_slug: e.match.choice!.slug }),
           sets: e.sets, rep_min: e.repMin, rep_max: e.repMax, rest_s: e.restS ?? defaultRestS,
           target_rir: e.targetRir, target_rpe: e.targetRpe, tempo: e.tempo, target_weight_kg: e.loadKg,
@@ -139,6 +184,7 @@ export interface DraftSummary {
   exercises: number;
   skipped: number;
   newFromCatalog: string[];
+  runs: number;
   defaultRest: number;
   notesKept: number;
 }
@@ -148,10 +194,11 @@ export function summarise(draft: PlanDraft): DraftSummary {
   const live = ex.filter((e) => !e.skipped);
   return {
     workouts: draft.workouts.filter((w) => w.exercises.some((e) => !e.skipped)).length,
-    exercises: live.length,
+    exercises: live.filter((e) => !e.run).length,
+    runs: live.filter((e) => e.run).length,
     skipped: ex.length - live.length,
-    newFromCatalog: [...new Set(live.filter((e) => e.match.choice?.kind === "catalog").map((e) => e.match.choice!.name))],
-    defaultRest: live.filter((e) => e.restS == null).length,
-    notesKept: live.filter((e) => e.notes).length,
+    newFromCatalog: [...new Set(live.filter((e) => !e.run && e.match.choice?.kind === "catalog").map((e) => e.match.choice!.name))],
+    defaultRest: live.filter((e) => !e.run && e.restS == null).length,
+    notesKept: live.filter((e) => (e.run ? e.runNotes : e.notes)).length,
   };
 }

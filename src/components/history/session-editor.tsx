@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { Award, Check, ChevronLeft, Copy, CornerDownRight, Flame, Loader2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Award, Check, ChevronLeft, Copy, CornerDownRight, Flame, Footprints, Loader2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -32,6 +32,9 @@ import {
 } from "@/lib/data/set-rows";
 import { toAttachmentRef, toExerciseConfig, toLoggedSet, type AttachmentRow, type ExerciseRow, type PersonalRecordRow, type SetLogRow } from "@/lib/data/types";
 import { createClient } from "@/lib/supabase/client";
+import { RunCard } from "@/components/workout/run-card";
+import { planSummary, resultText, settingLabel, type DistanceUnit } from "@/lib/domain/running";
+import type { SessionRunRow } from "@/lib/data/types";
 import { cn, formatDuration, formatMinutes, uuid } from "@/lib/utils";
 
 type Ex = EditExercise;
@@ -66,8 +69,8 @@ function setLabels(sets: Pick<SetLogRow, "id" | "kind" | "drop_parent_id">[]) {
 
 const RECORDS_FAILED = "personal records couldn't be refreshed. They'll update the next time you save a workout with these exercises.";
 
-export function SessionEditor({ session, unit, library, records, attachments: initialAttachments }: {
-  session: SessionFull; unit: WeightUnit; library: ExerciseRow[]; records: PersonalRecordRow[]; attachments: AttachmentRow[];
+export function SessionEditor({ session, unit, distUnit = "km", library, records, attachments: initialAttachments }: {
+  session: SessionFull; unit: WeightUnit; distUnit?: DistanceUnit; library: ExerciseRow[]; records: PersonalRecordRow[]; attachments: AttachmentRow[];
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -79,6 +82,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
   const [start, setStart] = useState(saved.start);
   const [minutes, setMinutes] = useState(saved.minutes);
   const [items, setItems] = useState<Ex[]>(saved.items);
+  const [runs, setRuns] = useState<SessionRunRow[]>(saved.runs);
   const [shortfallReason, setShortfallReason] = useState<ShortfallReason | null>(saved.shortfallReason);
   const [energy, setEnergy] = useState<number | null>(saved.energy);
   const [picker, setPicker] = useState(false);
@@ -93,6 +97,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
     setStart(d.start);
     setMinutes(d.minutes);
     setItems(d.items);
+    setRuns(d.runs);
     setShortfallReason(d.shortfallReason);
     setEnergy(d.energy);
   }
@@ -195,7 +200,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
     const def = attachments.find((a) => a.id === ex.default_attachment_id && !a.archived_at);
     setItems((cur) => [...cur, {
       id, session_id: session.id, exercise_id: ex.id, exercise: ex, template_exercise_id: null, substituted_for: null,
-      position: cur.length, prescribed: { sets: ex.default_sets, rep_min: ex.default_rep_min, rep_max: ex.default_rep_max, rest_s: ex.default_rest_s }, notes: null,
+      position: nextPos(), prescribed: { sets: ex.default_sets, rep_min: ex.default_rep_min, rep_max: ex.default_rep_max, rest_s: ex.default_rest_s }, notes: null,
       track_sides: ex.track_sides,
       attachment_state: ex.default_attachment_state === "attachment" && !def ? null : ex.default_attachment_state,
       attachment_id: def?.id ?? null, attachment_name: def?.name ?? null,
@@ -203,8 +208,19 @@ export function SessionEditor({ session, unit, library, records, attachments: in
     }]);
   }
 
+  function nextPos() {
+    return Math.max(-1, ...items.map((e) => e.position), ...runs.map((r) => r.position)) + 1;
+  }
+
+  function addRun() {
+    setRuns((cur) => [...cur, {
+      id: uuid(), session_id: session.id, template_run_id: null, position: nextPos(), name: "Run", prescribed: {}, setting: null,
+      duration_s: null, distance_m: null, effort: null, intervals_done: null, notes: null, completed: true, completed_at: session.started_at,
+    }]);
+  }
+
   async function save() {
-    const draft: SessionDraft = { name, notes, start, minutes, items, shortfallReason: shortOfPlan(items) ? shortfallReason : null, energy };
+    const draft: SessionDraft = { name, notes, start, minutes, items, runs, shortfallReason: shortOfPlan(items) ? shortfallReason : null, energy };
     const problem = validateDraft(draft);
     if (problem) return toast.error(problem);
 
@@ -287,12 +303,13 @@ export function SessionEditor({ session, unit, library, records, attachments: in
             </div>
           ) : (
             <p className="mt-1 text-[14px] text-muted-foreground tabular">
-              {format(new Date(saved.start), "EEEE d MMMM yyyy · HH:mm")} · {formatMinutes(saved.minutes * 60000)} · {stats.sets} sets
+              {format(new Date(saved.start), "EEEE d MMMM yyyy · HH:mm")} · {formatMinutes(saved.minutes * 60000)}{saved.items.length > 0 || saved.runs.length === 0 ? ` · ${stats.sets} sets` : ""}
+              {saved.runs.length > 0 ? ` · ${saved.runs.length} run${saved.runs.length === 1 ? "" : "s"}` : ""}
               {stats.drops > 0 ? ` · ${stats.drops} drop${stats.drops === 1 ? "" : "s"}` : ""}
               {stats.warmups > 0 ? ` · ${stats.warmups} warm-up${stats.warmups === 1 ? "" : "s"}` : ""}
-              {" · "}{stats.dropKg > 0
+              {saved.items.length === 0 && saved.runs.length > 0 ? null : <>{" · "}{stats.dropKg > 0
                 ? `total volume ${formatVolume(stats.workingKg + stats.dropKg, unit)} (working ${formatVolume(stats.workingKg, unit)} + drops ${formatVolume(stats.dropKg, unit)})`
-                : formatVolume(stats.workingKg, unit)}
+                : formatVolume(stats.workingKg, unit)}</>}
             </p>
           )}
         </div>
@@ -498,7 +515,35 @@ export function SessionEditor({ session, unit, library, records, attachments: in
           </Card>
           );
         })}
-        {editing && <Button variant="outline" className="w-full" onClick={() => setPicker(true)}><Plus /> Add exercise</Button>}
+        {runs.map((r) => editing ? (
+          <RunCard key={r.id} run={r} unit={distUnit} live={false} isFirst isLast
+            onChange={(patch) => setRuns((cur) => cur.map((x) => (x.id === r.id ? { ...x, ...patch } : x)))}
+            onRemove={() => setRuns((cur) => cur.filter((x) => x.id !== r.id))} />
+        ) : (
+          <Card key={r.id} className="p-4 md:p-5">
+            <div className="flex items-start gap-2">
+              <Footprints aria-hidden className="mt-1 size-4 shrink-0 text-accent" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[16px] font-semibold tracking-tight">{r.name}</p>
+                {planSummary(r.prescribed, distUnit) && <p className="mt-0.5 text-[12.5px] text-muted-foreground tabular">Planned {planSummary(r.prescribed, distUnit)}</p>}
+                <p className="mt-1 text-[14px] tabular">{resultText(r, distUnit) || "—"}</p>
+                <p className="text-[12.5px] text-muted-foreground">
+                  {[r.distance_m == null ? "No distance recorded, so no pace" : null, r.setting ? settingLabel[r.setting] : null,
+                    r.effort != null ? `Effort ${r.effort}/10` : null,
+                    r.intervals_done != null ? `${r.intervals_done}${r.prescribed?.interval_count ? ` of ${r.prescribed.interval_count}` : ""} intervals` : null]
+                    .filter(Boolean).join(" · ")}
+                </p>
+                {r.notes && <p className="mt-2 text-[13px] text-muted-foreground">{r.notes}</p>}
+              </div>
+            </div>
+          </Card>
+        ))}
+        {editing && (
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="w-full" onClick={() => setPicker(true)}><Plus /> Add exercise</Button>
+            <Button variant="outline" className="w-full" onClick={addRun}><Footprints /> Add run</Button>
+          </div>
+        )}
       </div>
 
       <div className="mt-6">

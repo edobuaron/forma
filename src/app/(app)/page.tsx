@@ -16,6 +16,9 @@ import { recordLabel } from "@/components/workout/stream-comparison";
 import { formatWeight, kgToDisplay } from "@/lib/domain/units";
 import { loadDashboard } from "@/lib/data/dashboard";
 import { requireUser } from "@/lib/supabase/server";
+import { distanceUnit } from "@/lib/data/types";
+import { sessionLine } from "@/lib/session-text";
+import { totalsText } from "@/lib/domain/running";
 import { cn, formatMinutes } from "@/lib/utils";
 
 export const metadata = { title: "Today" };
@@ -110,6 +113,9 @@ export default async function Dashboard() {
             <p className="mt-1.5 text-[13px] text-muted-foreground tabular">
               Last week {d.lastWeekCompleted} · {thisWeekSets} working sets so far
             </p>
+            {d.weekRunning.runs > 0 && (
+              <p className="mt-0.5 text-[13px] text-muted-foreground tabular">Running: {totalsText(d.weekRunning, distanceUnit(d.profile))}</p>
+            )}
             <div className="mt-auto flex gap-1.5 pt-5" aria-hidden>
               {d.week.map((w) => (
                 <span key={w.key} className={cn("h-2 flex-1 rounded-full", w.workouts.length ? "bg-positive" : w.isFuture ? "bg-subtle/50" : "bg-subtle")} />
@@ -272,7 +278,7 @@ export default async function Dashboard() {
                     <div className="min-w-0 flex-1">
                       <p className="text-[15px] font-semibold tracking-tight">{s.name}</p>
                       <p className="text-[13px] text-muted-foreground tabular">
-                        {s.exercise_count} exercises · {s.set_count} sets
+                        {sessionLine(s, distanceUnit(d.profile))}
                         {s.ended_at && ` · ${formatMinutes(new Date(s.ended_at).getTime() - new Date(s.started_at).getTime())}`}
                       </p>
                     </div>

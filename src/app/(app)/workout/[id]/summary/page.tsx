@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { ArrowRight, Award, Check, Clock, Dumbbell, Layers } from "lucide-react";
+import { ArrowRight, Award, Check, Clock, Dumbbell, Footprints, Layers } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,8 @@ import { formatVolume, formatWeight } from "@/lib/domain/units";
 import { getProfile, getSessionFull, recentHistory, sessionRecords } from "@/lib/data/queries";
 import { isDropRow, isWorkingRow, rowDropVolumeKg, rowVolumeKg, toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription } from "@/lib/data/types";
 import { requireUser } from "@/lib/supabase/server";
+import { distanceUnit } from "@/lib/data/types";
+import { planSummary, resultText, runTotals, settingLabel, totalsText } from "@/lib/domain/running";
 import { formatMinutes } from "@/lib/utils";
 
 export const metadata = { title: "Summary" };
@@ -55,6 +57,10 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
     return { e, cfg, streams, cmps, improved, below, hasPrev: cmps.some((c) => c.status !== "no_previous"), rec, attachment, prs: records.filter((r) => r.exercise_id === e.exercise_id) };
   });
   const improvements = rows.filter((r) => r.improved > 0 && r.below === 0);
+  const distUnit = distanceUnit(profile);
+  const runs = session.runs.filter((r) => r.completed);
+  // Running stays out of sets and volume; a run-only workout shows running totals instead.
+  const lifting = performed.length > 0 || runs.length === 0;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -65,7 +71,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
       </div>
 
       <div className="mb-4 grid grid-cols-3 gap-3">
-        {[
+        {(lifting ? [
           { icon: Clock, label: "Duration", value: formatMinutes(duration) },
           {
             icon: Layers, label: "Working sets", value: totalSets,
@@ -75,7 +81,10 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
             icon: Dumbbell, label: dropKg > 0 ? "Total volume" : "Volume", value: formatVolume(workingKg + dropKg, unit),
             detail: dropKg > 0 ? `Working ${formatVolume(workingKg, unit)} · drops ${formatVolume(dropKg, unit)}` : "",
           },
-        ].map((s) => (
+        ] : [
+          { icon: Clock, label: "Duration", value: formatMinutes(duration) },
+          { icon: Footprints, label: "Running", value: runs.length, detail: totalsText(runTotals(runs), distUnit) },
+        ]).map((s) => (
           <Card key={s.label} className="p-4">
             <s.icon className="mb-2 size-4 text-accent" />
             <p className="num whitespace-nowrap text-[19px] sm:text-[24px]">{s.value}</p>
@@ -114,6 +123,16 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
       )}
 
       <div className="space-y-3">
+        {runs.map((r) => (
+          <Card key={r.id} className="p-5">
+            <p className="flex items-center gap-2 text-[15px] font-semibold tracking-tight"><Footprints aria-hidden className="size-4 text-accent" /> {r.name}</p>
+            {planSummary(r.prescribed, distUnit) && <p className="mt-0.5 text-[12.5px] text-muted-foreground tabular">Planned {planSummary(r.prescribed, distUnit)}</p>}
+            <p className="mt-1 text-[14px] tabular"><span className="text-muted-foreground">Actual</span> {resultText(r, distUnit)}</p>
+            <p className="text-[12.5px] text-muted-foreground">
+              {[r.distance_m == null ? "No distance recorded, so no pace" : null, r.setting ? settingLabel[r.setting] : null, r.effort != null ? `Effort ${r.effort}/10` : null].filter(Boolean).join(" · ")}
+            </p>
+          </Card>
+        ))}
         {rows.map((r) => (
           <Card key={r.e.id} className="p-5">
             <div className="mb-2 flex items-center justify-between gap-3">

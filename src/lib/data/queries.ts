@@ -6,8 +6,9 @@ import {
   toAttachmentRef, toLoggedSet, toPrescription,
   type AttachmentRow,
   type BodyMeasurementRow, type ExerciseRow, type PersonalRecordRow, type ProfileRow, type ProgramRow,
-  type SessionExerciseRow, type SessionRow, type SetHistoryRow, type SetLogRow, type TemplateExerciseRow,
-  type TemplateRow,
+  type SessionExerciseRow, type SessionRow, type SessionRunRow, type SetHistoryRow, type SetLogRow, type TemplateExerciseRow,
+  type TemplateRow, type TemplateRunRow,
+  normalizeRun,
 } from "./types";
 
 type DB = SupabaseClient;
@@ -75,16 +76,24 @@ export async function listAttachments(db: DB, opts: { includeArchived?: boolean 
 // ---------- programs ----------
 export interface TemplateWithExercises extends TemplateRow {
   exercises: (TemplateExerciseRow & { exercise: ExerciseRow })[];
+  /** Prescribed runs (migration 016), in the same position space as the exercises. */
+  runs: TemplateRunRow[];
 }
 export interface ProgramFull extends ProgramRow {
   templates: TemplateWithExercises[];
 }
 
-const PROGRAM_SELECT = "*, templates:workout_templates(*, exercises:template_exercises(*, exercise:exercises(*)))";
+const PROGRAM_SELECT = "*, templates:workout_templates(*, exercises:template_exercises(*, exercise:exercises(*)), runs:template_runs(*))";
 
 function sortProgram(p: ProgramFull): ProgramFull {
   p.templates.sort((a, b) => a.position - b.position);
-  p.templates.forEach((t) => t.exercises.sort((a, b) => a.position - b.position));
+  p.templates.forEach((t) => {
+    t.exercises.sort((a, b) => a.position - b.position);
+    t.runs = (t.runs ?? []).map((r) => ({
+      ...r, target_distance_m: r.target_distance_m == null ? null : Number(r.target_distance_m),
+      interval_work_m: r.interval_work_m == null ? null : Number(r.interval_work_m),
+    })).sort((a, b) => a.position - b.position);
+  });
   return p;
 }
 
@@ -116,6 +125,8 @@ export async function getProgramVersions(db: DB, programId: string) {
 // ---------- sessions ----------
 export interface SessionFull extends SessionRow {
   exercises: (SessionExerciseRow & { exercise: ExerciseRow; sets: SetLogRow[] })[];
+  /** Runs in this workout (migration 016), in the same position space as the exercises. */
+  runs: SessionRunRow[];
 }
 
 export async function getInProgressSession(db: DB): Promise<SessionRow | null> {
@@ -125,11 +136,12 @@ export async function getInProgressSession(db: DB): Promise<SessionRow | null> {
 export async function getSessionFull(db: DB, id: string): Promise<SessionFull | null> {
   const s = check(
     await db.from("workout_sessions")
-      .select("*, exercises:session_exercises(*, exercise:exercises!session_exercises_exercise_id_fkey(*), sets:set_logs(*))")
+      .select("*, exercises:session_exercises(*, exercise:exercises!session_exercises_exercise_id_fkey(*), sets:set_logs(*)), runs:session_runs(*)")
       .eq("id", id).maybeSingle(),
   ) as SessionFull | null;
   if (!s) return null;
   s.exercises.sort((a, b) => a.position - b.position);
+  s.runs = (s.runs ?? []).map(normalizeRun).sort((a, b) => a.position - b.position);
   s.exercises.forEach((e) => e.sets.sort((a, b) => a.position - b.position));
   return s;
 }
@@ -137,21 +149,27 @@ export async function getSessionFull(db: DB, id: string): Promise<SessionFull | 
 export interface SessionListItem extends SessionRow {
   exercise_count: number;
   set_count: number;
+  /** Completed runs in the workout (migration 016). Never counted as sets. */
+  runs: Pick<SessionRunRow, "duration_s" | "distance_m">[];
 }
 
 export async function listSessions(db: DB, opts: { limit?: number; from?: string; to?: string } = {}): Promise<SessionListItem[]> {
   let q = db.from("workout_sessions")
-    .select("*, session_exercises(id), set_logs(id, completed, kind)")
+    .select("*, session_exercises(id), set_logs(id, completed, kind), session_runs(duration_s, distance_m, completed)")
     .eq("status", "completed")
     .order("started_at", { ascending: false });
   if (opts.from) q = q.gte("started_at", opts.from);
   if (opts.to) q = q.lt("started_at", opts.to);
   if (opts.limit) q = q.limit(opts.limit);
-  const rows = check(await q) as (SessionRow & { session_exercises: { id: string }[]; set_logs: { completed: boolean; kind: string }[] })[];
-  return rows.map(({ session_exercises, set_logs, ...s }) => ({
+  const rows = check(await q) as (SessionRow & {
+    session_exercises: { id: string }[]; set_logs: { completed: boolean; kind: string }[];
+    session_runs?: (Pick<SessionRunRow, "duration_s" | "distance_m" | "completed">)[];
+  })[];
+  return rows.map(({ session_exercises, set_logs, session_runs, ...s }) => ({
     ...s,
     exercise_count: session_exercises.length,
     set_count: set_logs.filter((l) => l.completed && l.kind === "working").length,
+    runs: (session_runs ?? []).filter((r) => r.completed).map((r) => ({ duration_s: r.duration_s, distance_m: r.distance_m == null ? null : Number(r.distance_m) })),
   }));
 }
 
@@ -161,6 +179,8 @@ export interface StartTemplate {
   name: string;
   exerciseCount: number;
   setCount: number;
+  /** Prescribed runs; a run is never counted as an exercise or a set. */
+  runCount: number;
   exercises: string[];
   lastDone: string | null;
 }
@@ -174,7 +194,9 @@ export function toStartTemplates(templates: TemplateWithExercises[], sessions: S
     name: t.name,
     exerciseCount: t.exercises.length,
     setCount: t.exercises.reduce((a, e) => a + e.sets, 0),
-    exercises: t.exercises.map((e) => e.exercise.name),
+    runCount: t.runs?.length ?? 0,
+    exercises: [...t.exercises.map((e) => ({ p: e.position, n: e.exercise.name })), ...(t.runs ?? []).map((r) => ({ p: r.position, n: r.name }))]
+      .sort((a, b) => a.p - b.p).map((x) => x.n),
     lastDone: last.get(t.id) ?? null,
   }));
 }
@@ -184,6 +206,7 @@ export interface DayWorkout {
   id: string;
   name: string;
   setCount: number;
+  runCount: number;
   minutes: number | null;
 }
 
@@ -192,6 +215,7 @@ export function toDayWorkout(s: SessionListItem): DayWorkout {
     id: s.id,
     name: s.name,
     setCount: s.set_count,
+    runCount: s.runs?.length ?? 0,
     minutes: s.ended_at ? Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000) : null,
   };
 }
@@ -270,4 +294,23 @@ export async function listSessionDates(db: DB, since?: string | null) {
     if (since) q = q.gte("started_at", since);
     return q.order("started_at").range(from, to);
   });
+}
+
+// ---------- runs (migration 016) ----------
+export interface RunHistoryRow extends Pick<SessionRunRow, "id" | "session_id" | "name" | "duration_s" | "distance_m" | "setting" | "effort"> {
+  started_at: string;
+}
+
+/** Completed runs of completed workouts, oldest first, optionally since a date. */
+export async function completedRuns(db: DB, since?: string | null): Promise<RunHistoryRow[]> {
+  const rows = await fetchAll<SessionRunRow & { session: { started_at: string; status: string } }>((from, to) => {
+    let q = db.from("session_runs").select("id, session_id, name, duration_s, distance_m, setting, effort, completed, session:workout_sessions!inner(started_at, status)")
+      .eq("completed", true).eq("session.status", "completed");
+    if (since) q = q.gte("session.started_at", since);
+    return q.order("id").range(from, to) as unknown as PromiseLike<{ data: (SessionRunRow & { session: { started_at: string; status: string } })[] | null; error: { message: string } | null }>;
+  });
+  return rows.map(({ session, ...r }) => ({
+    id: r.id, session_id: r.session_id, name: r.name, duration_s: r.duration_s, setting: r.setting, effort: r.effort,
+    distance_m: r.distance_m == null ? null : Number(r.distance_m), started_at: session.started_at,
+  })).sort((a, b) => a.started_at.localeCompare(b.started_at));
 }

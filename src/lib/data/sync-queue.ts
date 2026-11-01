@@ -11,7 +11,7 @@
 // - Failed writes retry with exponential backoff.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type SyncTable = "set_logs" | "session_exercises" | "workout_sessions";
+export type SyncTable = "set_logs" | "session_exercises" | "workout_sessions" | "session_runs";
 export interface SyncOp {
   table: SyncTable;
   id: string;
@@ -23,7 +23,7 @@ export type SyncStatus = "idle" | "saving" | "error" | "offline";
 export type LocalCopy = "device" | "memory";
 type Listener = (s: SyncStatus, pending: number, local: LocalCopy) => void;
 
-const TABLE_ORDER: Record<SyncTable, number> = { workout_sessions: 0, session_exercises: 1, set_logs: 2 };
+const TABLE_ORDER: Record<SyncTable, number> = { workout_sessions: 0, session_exercises: 1, session_runs: 1, set_logs: 2 };
 
 export class SyncQueue {
   private ops = new Map<string, SyncOp>();
@@ -106,7 +106,7 @@ export class SyncQueue {
       const upserts = batch.filter((o) => o.kind === "upsert").sort((a, b) => TABLE_ORDER[a.table] - TABLE_ORDER[b.table]);
       const deletes = batch.filter((o) => o.kind === "delete").sort((a, b) => TABLE_ORDER[b.table] - TABLE_ORDER[a.table]);
 
-      for (const table of ["workout_sessions", "session_exercises", "set_logs"] as SyncTable[]) {
+      for (const table of ["workout_sessions", "session_exercises", "session_runs", "set_logs"] as SyncTable[]) {
         const rows = upserts.filter((o) => o.table === table);
         if (!rows.length) continue;
         if (table === "workout_sessions") {
@@ -128,7 +128,7 @@ export class SyncQueue {
           }
         }
       }
-      for (const table of ["set_logs", "session_exercises"] as SyncTable[]) {
+      for (const table of ["set_logs", "session_exercises", "session_runs"] as SyncTable[]) {
         const ids = deletes.filter((o) => o.table === table).map((o) => o.id);
         if (!ids.length) continue;
         const { error } = await this.db.from(table).delete().in("id", ids);

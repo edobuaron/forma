@@ -36,10 +36,11 @@ function toLibrary(rows: ExerciseRow[]): LibraryEntry[] {
 
 type Step = "source" | "review" | "summary" | "done";
 
-export function ImportPlan({ library: initialLibrary, drafts, unit, defaultRestS, hasActiveProgram, documentsEnabled }: {
+export function ImportPlan({ library: initialLibrary, drafts, unit, distUnit = "km", defaultRestS, hasActiveProgram, documentsEnabled }: {
   library: ExerciseRow[];
   drafts: StoredDraft[];
   unit: WeightUnit;
+  distUnit?: import("@/lib/domain/running").DistanceUnit;
   defaultRestS: number;
   hasActiveProgram: boolean;
   documentsEnabled: boolean;
@@ -307,6 +308,7 @@ export function ImportPlan({ library: initialLibrary, drafts, unit, defaultRestS
           <h2 className="text-[17px] font-bold tracking-[-0.02em]">{draft.programName}</h2>
           <p className="text-[13.5px] text-muted-foreground">
             {summary.workouts} workout{summary.workouts === 1 ? "" : "s"} · {summary.exercises} exercise{summary.exercises === 1 ? "" : "s"}
+            {summary.runs > 0 && ` · ${summary.runs} run${summary.runs === 1 ? "" : "s"}`}
             {summary.skipped > 0 && ` · ${summary.skipped} left out`}
           </p>
           <ul className="space-y-2 text-[13.5px]">
@@ -404,7 +406,7 @@ export function ImportPlan({ library: initialLibrary, drafts, unit, defaultRestS
           </div>
           <Input value={w.warmupNotes ?? ""} maxLength={1000} placeholder="Warm-up notes" onChange={(e) => update((d) => ({ ...d, workouts: d.workouts.map((x) => (x.id === w.id ? { ...x, warmupNotes: e.target.value || null } : x)) }))} className="h-9 text-[13px]" />
           {w.exercises.map((e, ei) => (
-            <ExerciseRowEditor key={e.id} ex={e} index={ei} count={w.exercises.length} unit={unit} defaultRestS={defaultRestS}
+            <ExerciseRowEditor key={e.id} ex={e} index={ei} count={w.exercises.length} unit={unit} distUnit={distUnit} defaultRestS={defaultRestS}
               onChange={(next) => updateEx(w.id, e.id, next)}
               onMove={(dir) => update((d) => ({ ...d, workouts: d.workouts.map((x) => {
                 if (x.id !== w.id) return x;
@@ -427,7 +429,7 @@ export function ImportPlan({ library: initialLibrary, drafts, unit, defaultRestS
       <div className="pb-safe fixed inset-x-0 bottom-[64px] z-40 px-3 pb-3 md:bottom-0 md:left-60">
         <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-xl border bg-card/95 p-2 shadow-raised backdrop-blur-xl">
           <span className={cn("flex-1 px-2 text-[13px]", problems.length ? "text-negative" : "text-muted-foreground")}>
-            {problems.length ? `${problems.length} thing${problems.length === 1 ? "" : "s"} to fix` : `${summary.exercises} exercises ready`}
+            {problems.length ? `${problems.length} thing${problems.length === 1 ? "" : "s"} to fix` : `${summary.exercises} exercises${summary.runs ? ` and ${summary.runs} run${summary.runs === 1 ? "" : "s"}` : ""} ready`}
           </span>
           <Button variant="ghost" onClick={() => { setDraft(null); setStep("source"); }}>Back</Button>
           <Button variant="primary" disabled={problems.length > 0} onClick={() => setStep("summary")}>Review summary</Button>

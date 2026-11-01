@@ -4,6 +4,7 @@ import { cleanText } from "@/lib/catalog/names";
 import { cellLabel, type Grid } from "./grid";
 import { matchExercise, type LibraryEntry } from "./match";
 import { interpretRow, norm } from "./notation";
+import { isRunName, readRun } from "./running";
 import {
   MAX_EXERCISES_PER_WORKOUT, MAX_ROWS, MAX_WORKOUTS, type DraftExercise, type DraftWorkout, type Flag, type PlanDraft,
   type PlanField, type SourceKind, type SourceRow,
@@ -205,7 +206,7 @@ export function textToRows(text: string): GridRows {
     const m = line.match(NOTATION_START);
     if (!m && looksLikeHeading(line)) { workout = headingName(line); continue; }
     // Text before the first workout heading with no prescription in it is a title or an introduction.
-    if (!m && !workout && out.rows.length === 0 && !/\d+\s*(?:x|×|sets?|serie|reps?)\b/i.test(line)) { out.notes.push(raw); continue; }
+    if (!m && !workout && out.rows.length === 0 && !/\d+\s*(?:x|×|sets?|serie|reps?)\b/i.test(line) && !(isRunName(line) && /\d/.test(line))) { out.notes.push(raw); continue; }
     let name = line, tail = "";
     if (m && m.index! > 0) { name = line.slice(0, m.index); tail = line.slice(m.index); }
     else if (!m) {
@@ -255,6 +256,15 @@ export function rowToExercise(row: SourceRow, ctx: BuildContext): { exercise: Dr
     origin: { ...it.origin, name: "extracted" },
     flags: [...matchFlags(match, name), ...it.flags],
   };
+  // A running prescription becomes a planned run; the lifting reading is kept in case the user says it isn't one.
+  const c = row.cells;
+  const r = readRun(c.exercise ?? "", [c.setsReps, c.sets, c.reps, c.notes].filter(Boolean).join(" "), c.rest);
+  if (r) {
+    ex.run = r.run;
+    ex.runFlags = r.flags;
+    const notes = [c.notes ? cleanText(c.notes, { multiline: true }) : null, ...r.notes].filter(Boolean);
+    ex.runNotes = notes.length ? [...new Set(notes)].join("\n").slice(0, 1000) : null;
+  }
   return { exercise: ex, warmup: null, supersetLabel: it.supersetLabel };
 }
 
