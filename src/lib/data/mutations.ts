@@ -163,6 +163,17 @@ export async function completeOnboarding(db: DB, opts: { displayName?: string | 
   })) as { status: "set_up" | "already_set_up" };
 }
 
+/**
+ * Record that this account finished or skipped the first-use tutorial. Only the first outcome is kept:
+ * a replay from Settings, a second tab or a retry changes nothing.
+ */
+export async function finishTutorial(db: DB, outcome: "completed" | "skipped") {
+  const { data: u } = await db.auth.getUser();
+  if (!u.user) throw new Error("Not signed in");
+  ok(await db.from("profiles").update({ tutorial_done_at: new Date().toISOString(), tutorial_outcome: outcome })
+    .eq("id", u.user.id).is("tutorial_done_at", null).select("id"));
+}
+
 /** Add a fresh, independent copy of the starter program. Existing programs are not changed. */
 export async function addStarterProgram(db: DB) {
   return ok(await db.rpc("add_starter_program")) as string;

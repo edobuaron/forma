@@ -25,6 +25,9 @@ export interface ProfileRow {
   starter_version: number | null;
   /** Muscles kept at maintenance volume (migration 012). Empty = no focus. Read via maintenanceMuscles(). */
   maintenance_muscles?: string[] | null;
+  /** When the first-use tutorial was finished or skipped (migration 017). null = not yet. */
+  tutorial_done_at?: string | null;
+  tutorial_outcome?: "completed" | "skipped" | "existing" | null;
   created_at: string;
 }
 

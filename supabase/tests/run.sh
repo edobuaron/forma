@@ -19,6 +19,7 @@ $P -d forma_test -f supabase/tests/10_maintenance_muscles_test.sql
 $P -d forma_test -f supabase/tests/11_drop_sets_test.sql
 $P -d forma_test -f supabase/tests/12_plan_import_test.sql
 $P -d forma_test -f supabase/tests/13_energy_rating_test.sql
+$P -d forma_test -f supabase/tests/17_tutorial_test.sql
 
 # Upgrade path: an account created before migration 009 must keep everything.
 $P -d postgres -c 'drop database if exists forma_upgrade_test' -c 'create database forma_upgrade_test'
@@ -38,3 +39,12 @@ for f in supabase/migrations/*.sql; do
   $P -d forma_upgrade_011 -f "$f"
 done
 $P -d forma_upgrade_011 -f supabase/tests/09_upgrade_011_test.sql
+
+# Upgrade to 017: accounts already set up are marked as having seen the tutorial; mid-setup ones are not.
+$P -d postgres -c 'drop database if exists forma_upgrade_017' -c 'create database forma_upgrade_017'
+$P -d forma_upgrade_017 -f supabase/tests/00_stub_supabase.sql
+for f in supabase/migrations/*.sql; do
+  [[ "$(basename "$f")" == 20261031000017_* ]] && $P -d forma_upgrade_017 -f supabase/tests/17_pre_017_fixture.sql
+  $P -d forma_upgrade_017 -f "$f"
+done
+$P -d forma_upgrade_017 -f supabase/tests/17_upgrade_017_test.sql
