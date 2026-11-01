@@ -11,6 +11,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { displayToKg, kgToDisplay } from "@/lib/domain/units";
 import { AccountSettings } from "./account-settings";
+import { ReplayTutorialButton } from "@/components/onboarding/tutorial";
 import { MuscleChips } from "@/components/exercises/muscle-chips";
 import { useShowRir } from "@/components/workout/rir-visibility";
 import { updateProfile } from "@/lib/data/mutations";
@@ -137,6 +138,12 @@ export function SettingsForm({ profile, email }: { profile: ProfileRow; email?: 
         </Row>
         <Row label="Body measurements">
           <Button asChild variant="outline" size="sm"><a href="/api/export?format=csv&type=body"><Download /> CSV</a></Button>
+        </Row>
+      </Section>
+
+      <Section title="Help">
+        <Row label="First-use tutorial" sub="Three short steps: your starter program, importing a plan, logging a workout">
+          <ReplayTutorialButton unit={profile.unit} />
         </Row>
       </Section>
 

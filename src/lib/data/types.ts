@@ -28,6 +28,9 @@ export interface ProfileRow {
   maintenance_muscles?: string[] | null;
   /** How distances are shown and typed (migration 016); stored distances are always metres. Read via distanceUnit(). */
   distance_unit?: DistanceUnit | null;
+  /** When the first-use tutorial was finished or skipped (migration 017). null = not yet. */
+  tutorial_done_at?: string | null;
+  tutorial_outcome?: "completed" | "skipped" | "existing" | null;
   created_at: string;
 }
 

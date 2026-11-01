@@ -15,6 +15,8 @@ import { prLabel, type PRType } from "@/lib/domain/prs";
 import { recordLabel } from "@/components/workout/stream-comparison";
 import { formatWeight, kgToDisplay } from "@/lib/domain/units";
 import { loadDashboard } from "@/lib/data/dashboard";
+import { TutorialOnFirstVisit } from "@/components/onboarding/tutorial";
+import { shouldShowTutorial } from "@/lib/domain/tutorial";
 import { requireUser } from "@/lib/supabase/server";
 import { distanceUnit } from "@/lib/data/types";
 import { sessionLine } from "@/lib/session-text";
@@ -45,6 +47,7 @@ export default async function Dashboard() {
 
   return (
     <div className="space-y-6 animate-in">
+      {shouldShowTutorial(d.profile) && <TutorialOnFirstVisit unit={unit} />}
       <div className="flex items-end justify-between gap-4">
         <div>
           <p className="text-[13px] font-medium text-muted-foreground">{format(now, "EEEE d MMMM")}</p>
