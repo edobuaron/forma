@@ -31,6 +31,11 @@ export async function finishWorkout(db: DB, sessionId: string, notes: string | n
   ok(await db.rpc("finish_workout", { p_session_id: sessionId, p_notes: notes, p_ended_at: endedAt.toISOString(), p_shortfall_reason: shortfallReason }));
 }
 
+/** Set or clear a workout's starting energy (1–10, null = not answered). */
+export async function setEnergyRating(db: DB, sessionId: string, rating: number | null) {
+  ok(await db.from("workout_sessions").update({ energy_rating: rating }).eq("id", sessionId));
+}
+
 export async function discardWorkout(db: DB, sessionId: string) {
   ok(await db.from("workout_sessions").delete().eq("id", sessionId));
 }

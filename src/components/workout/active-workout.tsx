@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { ChevronLeft, Cloud, CloudOff, Loader2, MoreHorizontal, Plus, Timer, Trash2 } from "lucide-react";
+import { ChevronLeft, Cloud, CloudOff, Gauge, Loader2, MoreHorizontal, Plus, Timer, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +27,7 @@ import { toAttachmentRef, toExerciseConfig, toLoggedSet, toPrescription, type At
 import { createClient } from "@/lib/supabase/client";
 import { formatDuration, uuid } from "@/lib/utils";
 import { AttachmentPicker } from "./attachment-picker";
+import { EnergySheet } from "./energy-rating";
 import { ExerciseCard } from "./exercise-card";
 import { ExercisePicker } from "./exercise-picker";
 import { RestTimer, type RestState } from "./rest-timer";
@@ -111,6 +112,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
   const [history, setHistory] = useState<Record<string, ExercisePerformance[]>>(initialHistory);
   const [notes, setNotes] = useState(initialSession.notes ?? "");
   const [shortfallReason, setShortfallReason] = useState<ShortfallReason | null>(null);
+  const [energy, setEnergy] = useState<number | null>(initialSession.energy_rating ?? null);
+  const [editingEnergy, setEditingEnergy] = useState(false);
   const [sync, setSync] = useState<{ status: SyncStatus; pending: number; local: LocalCopy }>({ status: "idle", pending: 0, local: "device" });
   const [rest, setRestState] = useState<RestState | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -139,6 +142,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
       setItems((cur) => applyPending(cur, saved, library));
       const n = saved.find((o) => o.table === "workout_sessions" && o.row && "notes" in o.row);
       if (n) setNotes(String(n.row!.notes ?? ""));
+      const en = saved.find((o) => o.table === "workout_sessions" && o.row && "energy_rating" in o.row);
+      if (en) setEnergy((en.row!.energy_rating as number | null) ?? null);
       void q.flush();
     }
     const unsub = q.subscribe((status, pending, local) => setSync({ status, pending, local }));
@@ -497,6 +502,12 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     queueRef.current?.enqueue({ table: "workout_sessions", id: sessionId, kind: "upsert", row: { notes: v || null } });
   }
 
+  function onEnergy(v: number | null) {
+    setEnergy(v);
+    setEditingEnergy(false);
+    queueRef.current?.enqueue({ table: "workout_sessions", id: sessionId, kind: "upsert", row: { energy_rating: v } });
+  }
+
   async function onDismiss(item: WExercise) {
     const rec = recommendations.get(item.id);
     if (!rec) return;
@@ -628,6 +639,9 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
             </MenuTrigger>
             <MenuContent>
               <MenuItem onSelect={() => setPicker({ mode: "add" })}><Plus /> Add exercise</MenuItem>
+              <MenuItem onSelect={() => setEditingEnergy(true)}>
+                <Gauge /> {energy == null ? "Add starting energy" : <>Starting energy <span className="ml-auto pl-3 text-muted-foreground tabular">{energy}/10</span></>}
+              </MenuItem>
               <MenuItem destructive onSelect={discard}><Trash2 /> Discard workout</MenuItem>
             </MenuContent>
           </Menu>
@@ -696,6 +710,8 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
           <Textarea id="session-notes" value={notes} onChange={(e) => onSessionNotes(e.target.value)} placeholder="Sleep, energy, anything worth remembering…" />
         </div>
       </div>
+
+      <EnergySheet open={editingEnergy} onOpenChange={setEditingEnergy} mode="edit" initial={energy} onSubmit={onEnergy} />
 
       <RestTimer rest={rest} onChange={setRest} sound={profile.rest_sound} />
 

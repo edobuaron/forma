@@ -12,11 +12,14 @@ import { CategoryBar, CategoryTag } from "@/components/ui/category";
 import { workoutCategory } from "@/lib/category";
 
 export function StartButton({ templateId, label = "Start workout", ...rest }: { templateId: string | null; label?: string } & ButtonProps) {
-  const { start, busy } = useStartWorkout();
+  const { start, busy, energyPrompt } = useStartWorkout();
   return (
-    <Button variant="primary" {...rest} disabled={!!busy} onClick={() => start(templateId)}>
-      {busy ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />} {label}
-    </Button>
+    <>
+      <Button variant="primary" {...rest} disabled={!!busy} onClick={() => start(templateId)}>
+        {busy ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />} {label}
+      </Button>
+      {energyPrompt}
+    </>
   );
 }
 
@@ -26,11 +29,12 @@ function lastDoneLabel(t: StartTemplate) {
 
 /** The dashboard's main moment: the next workout (rotation or suggestion, labelled as such) and one large start action. */
 export function NextWorkout({ template, basis, order }: { template: StartTemplate; basis: "rotation" | "suggested"; order: string[] }) {
-  const { start, busy } = useStartWorkout();
+  const { start, busy, energyPrompt } = useStartWorkout();
   const cat = workoutCategory(template.name);
   const preview = template.exercises.slice(0, 4);
   return (
     <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+      {energyPrompt}
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="text-[13px] font-semibold text-accent">{basis === "rotation" ? "Next in your rotation" : "Suggested next"}</span>
@@ -64,9 +68,10 @@ export function NextWorkout({ template, basis, order }: { template: StartTemplat
 
 /** Every other workout, one tap to start. Shows when each was last done, without prescribing an order. */
 export function TemplateGrid({ templates }: { templates: StartTemplate[] }) {
-  const { start, busy } = useStartWorkout();
+  const { start, busy, energyPrompt } = useStartWorkout();
   return (
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      {energyPrompt}
       {templates.map((t) => {
         const cat = workoutCategory(t.name);
         return (

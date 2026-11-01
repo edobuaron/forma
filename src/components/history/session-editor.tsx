@@ -13,17 +13,19 @@ import { AttachmentChip, AttachmentPicker } from "@/components/workout/attachmen
 import { formatSetLong, loadColumnLabel } from "@/components/workout/format";
 import { ExercisePicker } from "@/components/workout/exercise-picker";
 import { NumberField } from "@/components/workout/number-field";
+import { EnergyScale } from "@/components/workout/energy-rating";
 import { ShortfallReasonField } from "@/components/workout/shortfall-reason";
 import { prLabel, type PRType } from "@/lib/domain/prs";
 import { recordLabel } from "@/components/workout/stream-comparison";
+import { energySummary } from "@/lib/domain/energy";
 import { isShortOfPlan, shortfallLabel } from "@/lib/domain/shortfall";
 import { dropSegmentsDone, volumeBreakdown, warmupsDone } from "@/lib/domain/drops";
 import { doneWorkingSets, setPerformed, sideLabel, sideShort, SIDES, sideAsSet, sideTrackingSuitable } from "@/lib/domain/sides";
 import type { AttachmentRef, ShortfallReason, Side, WeightUnit } from "@/lib/domain/types";
 import { displayToKg, formatVolume, kgToDisplay } from "@/lib/domain/units";
-import { deleteSession, recomputeRecords, saveSessionEdit } from "@/lib/data/mutations";
+import { deleteSession, recomputeRecords, saveSessionEdit, setEnergyRating } from "@/lib/data/mutations";
 import type { SessionFull } from "@/lib/data/queries";
-import { draftFromSession, savedDraft, toSessionEdit, validateDraft, type EditExercise, type SessionDraft } from "@/lib/data/session-edit";
+import { draftFromSession, energyToSave, savedDraft, toSessionEdit, validateDraft, type EditExercise, type SessionDraft } from "@/lib/data/session-edit";
 import {
   addDropSegment, canToggleKind, copyLeftToRight, dropSegmentsOf, newSet, patchSide, removalKind, removeSet, restoreSet, setSideCompleted, switchMode,
   type RemovedSet, type SidePatch,
@@ -78,6 +80,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
   const [minutes, setMinutes] = useState(saved.minutes);
   const [items, setItems] = useState<Ex[]>(saved.items);
   const [shortfallReason, setShortfallReason] = useState<ShortfallReason | null>(saved.shortfallReason);
+  const [energy, setEnergy] = useState<number | null>(saved.energy);
   const [picker, setPicker] = useState(false);
   const [attachments, setAttachments] = useState(initialAttachments);
   const [attachmentFor, setAttachmentFor] = useState<string | null>(null);
@@ -91,6 +94,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
     setMinutes(d.minutes);
     setItems(d.items);
     setShortfallReason(d.shortfallReason);
+    setEnergy(d.energy);
   }
 
   // Fresh server data (after router.refresh) becomes the saved state, without discarding edits in progress.
@@ -200,7 +204,7 @@ export function SessionEditor({ session, unit, library, records, attachments: in
   }
 
   async function save() {
-    const draft: SessionDraft = { name, notes, start, minutes, items, shortfallReason: shortOfPlan(items) ? shortfallReason : null };
+    const draft: SessionDraft = { name, notes, start, minutes, items, shortfallReason: shortOfPlan(items) ? shortfallReason : null, energy };
     const problem = validateDraft(draft);
     if (problem) return toast.error(problem);
 
@@ -214,6 +218,15 @@ export function SessionEditor({ session, unit, library, records, attachments: in
       return;
     }
     const next = savedDraft(draft);
+    const newEnergy = energyToSave(saved, draft);
+    if (newEnergy !== undefined) {
+      try {
+        await setEnergyRating(db, session.id, newEnergy);
+      } catch {
+        next.energy = saved.energy;
+        toast.error("Workout updated, but the starting energy couldn't be saved. Try editing it again.");
+      }
+    }
     const affected = new Map<string, ExerciseRow>();
     for (const e of [...saved.items, ...next.items]) affected.set(e.exercise_id, e.exercise);
     setSaved(next);
@@ -298,6 +311,20 @@ export function SessionEditor({ session, unit, library, records, attachments: in
       ) : (
         saved.shortfallReason && shortOfPlan(saved.items) && (
           <p className="mb-4 text-[13.5px] text-muted-foreground">Planned sets left out: {shortfallLabel[saved.shortfallReason].toLowerCase()}.</p>
+        )
+      )}
+
+      {editing ? (
+        <div className="mb-4 rounded-lg border bg-card p-4">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <p id="energy-label" className="text-[13px] font-medium text-muted-foreground">Starting energy (optional)</p>
+            {energy != null && <Button variant="quiet" size="sm" onClick={() => setEnergy(null)}>Remove rating</Button>}
+          </div>
+          <EnergyScale value={energy} onChange={setEnergy} labelledBy="energy-label" />
+        </div>
+      ) : (
+        saved.energy != null && (
+          <p className="mb-4 text-[13.5px] text-muted-foreground">Starting energy: <span className="font-medium text-foreground tabular">{energySummary(saved.energy)}</span></p>
         )
       )}
 

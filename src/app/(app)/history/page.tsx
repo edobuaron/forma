@@ -83,6 +83,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
                       <p className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">{s.name}{s.shortfall_reason && <Badge tone="neutral"><Clock aria-hidden /> Shortened</Badge>}</p>
                       <p className="text-[13px] text-muted-foreground tabular">
                         {s.exercise_count} exercises · {s.set_count} sets{s.ended_at && ` · ${formatMinutes(new Date(s.ended_at).getTime() - new Date(s.started_at).getTime())}`}
+                        {s.energy_rating != null && <span className="text-muted-foreground/80"> · <span className="sr-only">starting </span>energy {s.energy_rating}/10</span>}
                       </p>
                     </div>
                     <ChevronRight className="size-4 text-muted-foreground" />

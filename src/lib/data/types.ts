@@ -138,6 +138,8 @@ export interface SessionRow {
   bodyweight_kg: number | null;
   /** Why planned sets were omitted; null = not recorded. Added in migration 008. */
   shortfall_reason: ShortfallReason | null;
+  /** Self-reported starting energy, 1–10; null = not answered. Added in migration 015. */
+  energy_rating: number | null;
   created_at?: string;
   updated_at?: string;
 }

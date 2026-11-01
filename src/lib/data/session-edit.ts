@@ -26,6 +26,8 @@ export interface SessionDraft {
   minutes: number;
   items: EditExercise[];
   shortfallReason: ShortfallReason | null;
+  /** Starting energy 1–10, null = not answered. Saved apart from save_session_edit (see energyToSave). */
+  energy: number | null;
 }
 
 export function draftFromSession(s: SessionFull): SessionDraft {
@@ -36,6 +38,7 @@ export function draftFromSession(s: SessionFull): SessionDraft {
     minutes: s.ended_at ? Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000) : 60,
     items: s.exercises.map((e) => ({ ...e, track_sides: !!e.track_sides, sets: orderSets(e.sets.map(normalizeSet)) })),
     shortfallReason: s.shortfall_reason ?? null,
+    energy: s.energy_rating ?? null,
   };
 }
 
@@ -59,6 +62,14 @@ export function validateDraft(d: SessionDraft): string | null {
   if (Number.isNaN(new Date(d.start).getTime())) return "Invalid date.";
   if (!(d.minutes >= 1 && d.minutes <= 600)) return "Duration must be 1–600 minutes.";
   return null;
+}
+
+/**
+ * The starting energy to write after a History save, or undefined when it is unchanged.
+ * save_session_edit never touches the rating, so an unchanged one is simply left alone.
+ */
+export function energyToSave(saved: SessionDraft, next: SessionDraft): number | null | undefined {
+  return next.energy === saved.energy ? undefined : next.energy;
 }
 
 export interface SessionEdit {

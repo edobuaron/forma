@@ -35,7 +35,7 @@ Sessions reference templates with `on delete set null`; they never depend on the
 | `workout_templates` | A planned workout (e.g. "Push") | `day_of_week` is legacy (always null after editing); workouts are not tied to weekdays |
 | `template_exercises` | Planned exercise in a template | sets, rep_min, rep_max, rest_s, target_rir, optional, notes; since migration 014 also `warmup_sets`, `drop_segments` + `drop_scope` (last_set / all_sets), `target_rpe` (separate from RIR, never converted), `tempo`, `target_weight_kg` (a prescription only), `per_side` (reps per side; set count unchanged), `superset_group` (A–Z) |
 | `plan_imports` | Plan-import drafts (migration 014) | private per user; `draft` jsonb autosaved during review; cleared when the program is created (`status = created`, `created_program_id` kept for retries); expires 30 days after the last change |
-| `workout_sessions` | A performed workout | `status` in_progress / completed / discarded (max one in progress), started/ended, notes, bodyweight snapshot |
+| `workout_sessions` | A performed workout | `status` in_progress / completed / discarded (max one in progress), started/ended, notes, bodyweight snapshot, `energy_rating` (migration 015, see below) |
 | `session_exercises` | Exercise performed in a session | `prescribed` snapshot, `substituted_for`, notes |
 | `set_logs` | One set | `kind` warmup / working, `weight_kg` (**added** weight for bodyweight movements), `assistance_kg` (assisted movements), reps, rir, completed, completed_at |
 | `body_measurements` | Dated body metrics | one row per user per day |
@@ -74,6 +74,13 @@ Sessions reference templates with `on delete set null`; they never depend on the
 - A drop set is a working set followed by drop segments: rows with `kind = 'drop'` and `drop_parent_id` pointing at the working set (same exercise in the same workout; deleting the parent deletes its segments). Each segment has its own load, reps, RIR, completion and, under a left/right parent, its own sides. Loads are entered by the user; nothing is suggested or derived from a percentage.
 - The sequence counts as one planned set. Completed drop work is drop volume: summaries show "total volume = working + drops", and charts of working volume never include it.
 - `finish_workout` refuses a completed drop under a set that isn't completed; `save_session_edit` takes `drop_parent_id` per set and requires each drop to follow a working set of its exercise. Rules: `src/lib/domain/drops.ts`.
+
+## Starting energy (migration 015)
+
+- `workout_sessions.energy_rating` is an optional, self-reported 1–10 rating of how energetic the user felt when the workout started (1 = exhausted, 10 = full of energy). It is not RIR, effort or workout difficulty.
+- NULL means not answered: skipped, a workout logged for a past day without a rating, or any workout from before 015. There is no default.
+- Asked before a workout starts today (Skip starts without one); editable from the workout options and in History. It is written with a plain owner update, so `finish_workout` and `save_session_edit` leave it alone.
+- Nothing reads it to change progression, recommendations or records. Labels: `src/lib/domain/energy.ts`.
 
 ## Weighted bodyweight movements
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftFromSession, savedDraft, toSessionEdit, validateDraft } from "../session-edit";
+import { draftFromSession, energyToSave, savedDraft, toSessionEdit, validateDraft } from "../session-edit";
 import type { SessionFull } from "../queries";
 import { emptySideColumns, type ExerciseRow, type SetLogRow } from "../types";
 
@@ -54,6 +54,28 @@ describe("history editor draft", () => {
     expect(d.shortfallReason).toBe("time");
     expect(toSessionEdit({ ...d, shortfallReason: "equipment" }).session.shortfall_reason).toBe("equipment");
     expect(toSessionEdit({ ...d, shortfallReason: null }).session.shortfall_reason).toBeNull();
+  });
+});
+
+describe("history editor starting energy", () => {
+  it("is null when not answered, never a default", () => {
+    expect(draftFromSession(session([set({ assistance_kg: 0 })])).energy).toBeNull();
+    expect(draftFromSession({ ...session([set({ assistance_kg: 0 })]), energy_rating: null } as SessionFull).energy).toBeNull();
+  });
+
+  it("is written only when changed, and can be added, corrected or cleared", () => {
+    const rated = draftFromSession({ ...session([set({ assistance_kg: 0 })]), energy_rating: 6 } as SessionFull);
+    expect(rated.energy).toBe(6);
+    expect(energyToSave(rated, { ...rated, name: "Renamed" })).toBeUndefined();
+    expect(energyToSave(rated, { ...rated, energy: 8 })).toBe(8);
+    expect(energyToSave(rated, { ...rated, energy: null })).toBeNull();
+    const unrated = { ...rated, energy: null };
+    expect(energyToSave(unrated, { ...unrated, energy: 3 })).toBe(3);
+  });
+
+  it("is not part of the set-and-session payload", () => {
+    const d = draftFromSession({ ...session([set({ assistance_kg: 0 })]), energy_rating: 6 } as SessionFull);
+    expect(JSON.stringify(toSessionEdit(d))).not.toContain("energy");
   });
 });
 
