@@ -143,7 +143,7 @@ function LogStep({ unit }: { unit: "kg" | "lb" }) {
       <ul className="space-y-2 text-[13.5px]">
         <li className="flex gap-2.5"><Flame className="mt-0.5 size-4 shrink-0 text-foreground" /><span><span className="font-medium text-foreground">Warm-up</span> under each exercise adds a warm-up set. It never counts as a working set.</span></li>
         <li className="flex gap-2.5"><CornerDownRight className="mt-0.5 size-4 shrink-0 text-foreground" /><span>Tap a set&apos;s number and choose <span className="font-medium text-foreground">Make it a drop set</span> to log lighter segments after it.</span></li>
-        <li className="flex gap-2.5"><MoreHorizontal className="mt-0.5 size-4 shrink-0 text-foreground" /><span>The <span className="font-medium text-foreground">•••</span> button at the top of a workout adds exercises or discards it. Each exercise has its own for notes, previous sessions and RIR.</span></li>
+        <li className="flex gap-2.5"><MoreHorizontal className="mt-0.5 size-4 shrink-0 text-foreground" /><span>The <span className="font-medium text-foreground">•••</span> button at the top of a workout adds an exercise or a run, records your starting energy, or discards the workout. Each exercise has its own for notes, previous sessions and RIR.</span></li>
       </ul>
     </div>
   );
