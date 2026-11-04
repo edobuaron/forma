@@ -33,7 +33,7 @@ export function ResetPasswordForm({ expired = false }: { expired?: boolean }) {
       </>}
       {error && <p role="alert" className="text-sm text-negative">{error}</p>}
       {sent && <Button type="button" variant="outline" onClick={() => setSent(false)}>Try another email or request again</Button>}
-      <Link href="/login" className="flex min-h-11 items-center text-sm underline">Back to sign in</Link>
+      <Link href="/login?mode=login" className="flex min-h-11 items-center text-sm underline">Back to log in</Link>
     </form>
   );
 }

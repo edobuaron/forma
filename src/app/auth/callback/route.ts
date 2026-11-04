@@ -12,5 +12,5 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(new URL(next, url.origin));
   }
-  return NextResponse.redirect(new URL(next === "/auth/update-password" ? "/auth/reset-password?error=expired" : "/login?error=auth", url.origin));
+  return NextResponse.redirect(new URL(next === "/auth/update-password" ? "/auth/reset-password?error=expired" : "/login?mode=login&error=auth", url.origin));
 }
