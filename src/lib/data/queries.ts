@@ -224,7 +224,10 @@ export function toDayWorkout(s: SessionListItem): DayWorkout {
 /** Group flat history rows into per-session performances, newest first, keyed by exercise. */
 export function groupHistory(rows: SetHistoryRow[]): Map<string, ExercisePerformance[]> {
   const byEx = new Map<string, Map<string, ExercisePerformance>>();
-  for (const r of rows) {
+  // Sets are compared by working-set position, so they must be in logged order whatever order the
+  // query returned them in (completedSetHistory pages by id, not by position).
+  const ordered = [...rows].sort((a, b) => a.session_id.localeCompare(b.session_id) || a.se_position - b.se_position || a.position - b.position);
+  for (const r of ordered) {
     const m = byEx.get(r.exercise_id) ?? new Map<string, ExercisePerformance>();
     const p = m.get(r.session_id) ?? {
       sessionId: r.session_id,

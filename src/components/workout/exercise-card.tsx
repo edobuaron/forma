@@ -5,7 +5,7 @@ import {
 import { useId, useState } from "react";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
 import { Textarea } from "@/components/ui/input";
-import { compareSet, previousCounterpart, previousFor, summarisePrevious } from "@/lib/domain/comparison";
+import { compareWithCounterpart, counterpart, previousFor, summarisePrevious, type Counterpart } from "@/lib/domain/comparison";
 import { headline, type Recommendation } from "@/lib/domain/progression";
 import { workingSets } from "@/lib/domain/sets";
 import { dropSegmentsDone } from "@/lib/domain/drops";
@@ -121,6 +121,8 @@ export function ExerciseCard(p: Props) {
   const dropsDone = dropSegmentsDone(logged);
   let workingIdx = -1;
   let sidedIdx = -1;
+  // Comparison positions are per stream: sets logged together and sets with sides are numbered apart.
+  let togetherIdx = -1;
   // Working-set number of each parent, and the running segment number within it.
   const parentNo = new Map<string, number>();
   const dropNo = new Map<string, number>();
@@ -264,6 +266,7 @@ export function ExerciseCard(p: Props) {
               const isDrop = s.kind === "drop";
               if (s.kind === "working") workingIdx++;
               if (s.kind === "working" && s.sided) sidedIdx++;
+              if (s.kind === "working" && !s.sided) togetherIdx++;
               const idx = workingIdx;
               if (s.kind === "working") parentNo.set(s.id, idx + 1);
               const parentId = isDrop ? s.drop_parent_id ?? "" : s.id;
@@ -344,7 +347,7 @@ export function ExerciseCard(p: Props) {
                       <SideRow
                         key={side} side={side} set={s} setName={setName} plain={isWarm || isDrop} showRir={showRir} setGrid={setGrid}
                         ex={ex} unit={unit} rx={rx}
-                        prev={isWarm || isDrop || !prevSide[side] ? null : previousCounterpart(prevSide[side]!.sets, pi, ex)}
+                        prev={isWarm || isDrop || !prevSide[side] ? NO_COUNTERPART : counterpart(prevSide[side]!.sets, pi, ex)}
                         rec={p.recommendation?.sides?.[side] ?? null} index={pi}
                         reportFieldError={reportFieldError} fieldErrors={fieldErrors}
                         onChange={(patch) => p.onSideChange(s.id, side, patch)}
@@ -359,13 +362,14 @@ export function ExerciseCard(p: Props) {
 
               // Warm-ups and drops get no suggestion and no comparison: their numbers are whatever was done.
               const plain = isWarm || isDrop;
-              const prevSet = plain ? null : previousCounterpart(prevSets, idx, ex);
+              const pair = plain || !prev ? NO_COUNTERPART : counterpart(prevSets, togetherIdx, ex);
+              const prevSet = pair.previous;
               const targetReps = plain ? null : rec?.targetReps?.[idx] ?? prevSet?.reps ?? null;
               const suggestedLoad = plain ? null : rec?.targetLoadKg ?? (assisted ? prevSet?.assistanceKg : prevSet?.weightKg) ?? null;
               const loadVal = assisted ? s.assistance_kg : s.weight_kg;
               const showLoad = loadVal ?? (s.completed ? null : suggestedLoad);
               const isSuggested = loadVal == null && showLoad != null;
-              const cmp = s.completed && !plain ? compareSet(toLoggedSet(s), prevSet, ex) : null;
+              const cmp = s.completed && !plain ? compareWithCounterpart(toLoggedSet(s), pair, ex) : null;
               const cmpText = cmp ? comparisonText(cmp, unit, ex.loadType) : null;
               const loadName = ex.loadType === "assisted" ? "assistance" : "load";
               const rowErrors = [
@@ -531,22 +535,25 @@ function PreviousCell({ prevText, cmpText, prefix = "Previous" }: { prevText: st
   );
 }
 
+const NO_COUNTERPART: Counterpart = { previous: null, extra: false };
+
 /** One side of a left/right set: its own load, reps, RIR and completion, compared with the same side last time. */
-function SideRow({ side, set: s, setName, plain, showRir, setGrid, ex, unit, rx, prev, rec, index, reportFieldError, fieldErrors, onChange, onComplete }: {
+function SideRow({ side, set: s, setName, plain, showRir, setGrid, ex, unit, rx, prev: pair, rec, index, reportFieldError, fieldErrors, onChange, onComplete }: {
   side: Side; set: WSet; setName: string; plain: boolean; showRir: boolean; setGrid: string;
-  ex: ExerciseConfig; unit: WeightUnit; rx: WExercise["prescribed"]; prev: LoggedSet | null; rec: Recommendation | null; index: number;
+  ex: ExerciseConfig; unit: WeightUnit; rx: WExercise["prescribed"]; prev: Counterpart; rec: Recommendation | null; index: number;
   reportFieldError: (key: string, m: string | null) => void; fieldErrors: Record<string, string>;
   onChange: (patch: SidePatch) => void; onComplete: () => void;
 }) {
   const assisted = ex.loadType === "assisted";
   const bodyLoad = ex.loadType === "bodyweight" || ex.loadType === "weighted_bodyweight";
+  const prev = pair.previous;
   const v = sideAsSet(toLoggedSet(s), side);
   const done = v.completed;
   const loadVal = assisted ? v.assistanceKg : v.weightKg;
   const suggested = plain ? null : rec?.targetLoadKg ?? (assisted ? prev?.assistanceKg : prev?.weightKg) ?? null;
   const showLoad = loadVal ?? (done ? null : suggested);
   const targetReps = plain ? null : rec?.targetReps?.[index] ?? prev?.reps ?? null;
-  const cmp = done && !plain ? comparisonText(compareSet(v, prev, ex), unit, ex.loadType) : null;
+  const cmp = done && !plain ? comparisonText(compareWithCounterpart(v, pair, ex), unit, ex.loadType) : null;
   const name = `${setName} ${sideLabel[side].toLowerCase()}`;
   const key = `${s.id}:${side}`;
   const errors = ["load", "reps", "rir"].map((f) => fieldErrors[`${key}:${f}`] && `${f === "rir" ? "RIR" : f[0].toUpperCase() + f.slice(1)}: ${fieldErrors[`${key}:${f}`]}`).filter(Boolean);

@@ -49,7 +49,7 @@ export function setPerformed(s: LoggedSet): boolean {
 /** One side as a stand-alone set, for comparisons and records within that side. */
 export function sideAsSet(s: LoggedSet, side: Side): LoggedSet {
   const v = s.sides?.[side] ?? emptySide();
-  return { kind: s.kind, weightKg: v.weightKg, assistanceKg: v.assistanceKg, reps: v.reps, rir: v.rir, completed: v.completed };
+  return { kind: s.kind, weightKg: v.weightKg, assistanceKg: v.assistanceKg, reps: v.reps, rir: v.rir, completed: v.completed, workingNo: s.workingNo ?? null };
 }
 
 /** The sets of one side, in order. Sets logged together are not part of any side. */

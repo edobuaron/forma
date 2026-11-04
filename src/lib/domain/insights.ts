@@ -1,5 +1,6 @@
-import { dominantLoad, effectiveLoad, sameLoad, workingSets } from "./sets";
-import { sessionMode, setPerformed } from "./sides";
+import { dominantLoad, effectiveLoad, isValidWorkingSet, sameLoad, workingSets } from "./sets";
+import { workingPositions } from "./comparison";
+import { compatibleHistory, sessionMode, setPerformed } from "./sides";
 import type { ExerciseConfig, ExercisePerformance } from "./types";
 import { MUSCLE_LABELS } from "./analytics";
 
@@ -25,20 +26,37 @@ export interface Insight {
 const MIN_SESSIONS_TREND = 3;
 const MIN_SESSIONS_PLATEAU = 4;
 
-function repsAtLoad(h: ExercisePerformance, ex: ExerciseConfig, load: number) {
-  return workingSets(h.sets, ex)
-    .filter((s) => sameLoad(effectiveLoad(s, ex), load))
-    .reduce((a, s) => a + (s.reps ?? 0), 0);
+/** Reps by working-set position for valid sets at the given load. */
+function repsByPosition(h: ExercisePerformance, ex: ExerciseConfig, load: number): Map<number, number> {
+  const m = new Map<number, number>();
+  for (const p of workingPositions(h.sets)) {
+    if (isValidWorkingSet(p.set, ex) && sameLoad(effectiveLoad(p.set, ex), load)) m.set(p.pos, p.set.reps ?? 0);
+  }
+  return m;
+}
+
+/**
+ * Reps on the sets every session has at this load and position (first with first, …), so extra or
+ * missing sets never read as a change. null when the sessions share no such set.
+ */
+function matchedReps(sessions: ExercisePerformance[], ex: ExerciseConfig, load: number): { reps: number[]; sets: number } | null {
+  const maps = sessions.map((h) => repsByPosition(h, ex, load));
+  const shared = [...maps[0].keys()].filter((pos) => maps.every((m) => m.has(pos)));
+  if (shared.length === 0) return null;
+  return { reps: maps.map((m) => shared.reduce((a, pos) => a + m.get(pos)!, 0)), sets: shared.length };
 }
 
 /** Exercise-level insights from that exercise's completed history (newest first). */
 export function exerciseInsights(ex: ExerciseConfig, history: ExercisePerformance[]): Insight[] {
   if (ex.category === "skill") return [];
-  const sessions = history.filter((h) => workingSets(h.sets, ex).length > 0);
+  const logged = history.filter((h) => workingSets(h.sets, ex).length > 0);
+  // Only sessions in a setup compatible with the latest one (attachment) are compared.
+  const sessions = logged.length ? compatibleHistory(logged, logged[0].attachment) : [];
   const out: Insight[] = [];
   if (sessions.length < MIN_SESSIONS_TREND) return out;
 
-  // Decline across the last three comparable sessions (same dominant load, same set count).
+  // Decline across the last three comparable sessions: same dominant load, and reps compared only on
+  // the sets all three have at the same position. Extra sets don't count either way.
   const recent = sessions.slice(0, MIN_SESSIONS_TREND);
   const load = dominantLoad(recent[0].sets, ex);
   if (load != null) {
@@ -46,11 +64,11 @@ export function exerciseInsights(ex: ExerciseConfig, history: ExercisePerformanc
     const comparable = recent.every((h) => {
       const l = dominantLoad(h.sets, ex);
       const n = workingSets(h.sets, ex).length;
-      return l != null && sameLoad(l, load) && n === workingSets(recent[0].sets, ex).length
-        && (h.prescription == null || n >= h.prescription.sets);
+      return l != null && sameLoad(l, load) && (h.prescription == null || n >= h.prescription.sets);
     });
-    if (comparable) {
-      const reps = recent.map((h) => repsAtLoad(h, ex, load)); // newest first
+    const matched = comparable ? matchedReps(recent, ex, load) : null;
+    if (matched) {
+      const reps = matched.reps; // newest first
       const declining = reps[0] < reps[1] && reps[1] < reps[2] && reps[2] - reps[0] >= 2;
       const rirs = recent.flatMap((h) => workingSets(h.sets, ex).map((s) => s.rir)).filter((r): r is number => r != null);
       const bwChange = bodyweightChange(recent);
@@ -60,7 +78,7 @@ export function exerciseInsights(ex: ExerciseConfig, history: ExercisePerformanc
           severity: "attention",
           title: `${ex.name}: performance declined across the last three comparable sessions`,
           detail:
-            `Total reps at the same load went ${[...reps].reverse().join(" → ")}. ` +
+            `Reps on the same ${matched.sets === 1 ? "set" : `${matched.sets} sets`} at the same load went ${[...reps].reverse().join(" → ")}. ` +
             (bwChange != null && Math.abs(bwChange) >= 1.5 && ex.loadType !== "external"
               ? `Recorded bodyweight changed by ${bwChange > 0 ? "+" : ""}${bwChange.toFixed(1)} kg over this period, which affects bodyweight movements. `
               : "") +
@@ -89,8 +107,9 @@ export function exerciseInsights(ex: ExerciseConfig, history: ExercisePerformanc
       const l = dominantLoad(h.sets, ex);
       return l != null && sameLoad(l, load);
     });
-    if (sameLoadAll) {
-      const reps = window.map((h) => repsAtLoad(h, ex, load));
+    const matched = sameLoadAll ? matchedReps(window, ex, load) : null;
+    if (matched) {
+      const reps = matched.reps;
       if (Math.max(...reps) - Math.min(...reps) <= 1 && !out.some((i) => i.key.startsWith("decline"))) {
         out.push({
           key: `plateau:${ex.id}`,

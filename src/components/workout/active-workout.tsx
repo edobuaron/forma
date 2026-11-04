@@ -294,8 +294,10 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     const cfg = toExerciseConfig(item.exercise);
     const assisted = cfg.loadType === "assisted";
     const workIdx = item.sets.filter((s) => s.kind === "working").findIndex((s) => s.id === setId);
-    const prev = (history[item.exercise_id] ?? [])[0];
-    const prevSet = workIdx >= 0 && prev ? previousCounterpart(prev.sets, workIdx, cfg) : null;
+    // Prefill from the same position of the same stream in a compatible session; never another position.
+    const togetherIdx = item.sets.filter((s) => s.kind === "working" && !s.sided).findIndex((s) => s.id === setId);
+    const prev = previousFor(compatibleHistory(history[item.exercise_id] ?? [], toAttachmentRef(item)), "together", cfg);
+    const prevSet = togetherIdx >= 0 && prev ? previousCounterpart(prev.sets, togetherIdx, cfg) : null;
     const reps = set.reps ?? (set.kind === "working" ? rec?.targetReps?.[workIdx] ?? prevSet?.reps ?? null : null);
     if (reps == null) {
       toast("Enter reps first");

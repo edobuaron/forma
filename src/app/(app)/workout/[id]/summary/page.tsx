@@ -5,8 +5,8 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { recordLabel, StreamComparisonList } from "@/components/workout/stream-comparison";
-import { compareStreams } from "@/lib/domain/comparison";
+import { ComparisonSummaryLine, recordLabel, StreamComparisonList } from "@/components/workout/stream-comparison";
+import { compareStreams, summariseComparison } from "@/lib/domain/comparison";
 import { headline, recommendFor } from "@/lib/domain/progression";
 import { attachmentLabel, compatibleHistory } from "@/lib/domain/sides";
 import { normalizeSet } from "@/lib/data/set-rows";
@@ -48,13 +48,16 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
     const attachment = toAttachmentRef(e);
     // Each stream (together, left, right) is compared with the same stream, in a compatible setup only.
     const earlier = compatibleHistory(before.byExercise.get(e.exercise_id) ?? [], attachment);
-    const streams = compareStreams(e.sets.map((s) => toLoggedSet(normalizeSet(s))), earlier, cfg);
+    const logged = e.sets.map((s) => toLoggedSet(normalizeSet(s)));
+    const streams = compareStreams(logged, earlier, cfg);
+    // Verdicts come from matched sets only; extra sets and volume are reported separately.
+    const summary = summariseComparison(streams, logged, earlier, cfg);
     const cmps = streams.map((c) => c.comparison);
     const improved = cmps.filter((c) => c.status === "improved").length;
     const below = cmps.filter((c) => c.status === "below").length;
     const rec = recommendFor(cfg, toPrescription(e.prescribed, e.exercise), withThis.byExercise.get(e.exercise_id) ?? [],
       { sides: e.track_sides, attachment }, { conservative: profile.progression_conservative });
-    return { e, cfg, streams, cmps, improved, below, hasPrev: cmps.some((c) => c.status !== "no_previous"), rec, attachment, prs: records.filter((r) => r.exercise_id === e.exercise_id) };
+    return { e, cfg, streams, cmps, improved, below, hasPrev: summary.previous != null, summary, rec, attachment, prs: records.filter((r) => r.exercise_id === e.exercise_id) };
   });
   const improvements = rows.filter((r) => r.improved > 0 && r.below === 0);
   const distUnit = distanceUnit(profile);
@@ -146,6 +149,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
             </div>
             {r.attachment.state && <p className="mb-1.5 text-[12.5px] text-muted-foreground">Attachment: {attachmentLabel(r.attachment)}</p>}
             <StreamComparisonList items={r.streams} loadType={r.cfg.loadType} unit={unit} />
+            <ComparisonSummaryLine summary={r.summary} unit={unit} />
             <p className="mt-3 border-t pt-3 text-[13px] text-muted-foreground">
               <span className="font-semibold text-accent">Next time:</span> {headline(r.rec, r.cfg, unit).replace(" today.", " next session.")}
             </p>
