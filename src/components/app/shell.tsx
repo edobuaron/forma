@@ -1,6 +1,6 @@
 "use client";
 import {
-  Activity, BarChart3, CalendarDays, ChevronRight, Dumbbell, Home, LayoutList, MoreHorizontal, Ruler, Settings, Timer,
+  Activity, BarChart3, CalendarDays, ChevronRight, Dumbbell, Home, LayoutList, MoreHorizontal, Ruler, Settings, Timer, Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -14,13 +14,14 @@ const NAV = [
   { href: "/exercises", label: "Exercises", icon: Dumbbell },
   { href: "/programs", label: "Programs", icon: LayoutList },
   { href: "/body", label: "Body", icon: Ruler },
+  { href: "/community", label: "Community", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 const MOBILE = [NAV[0], NAV[1], NAV[2], NAV[3], { href: "/more", label: "More", icon: MoreHorizontal }];
 
 function active(path: string, href: string) {
   if (href === "/") return path === "/";
-  if (href === "/more") return ["/more", "/exercises", "/programs", "/body", "/settings"].some((p) => path.startsWith(p));
+  if (href === "/more") return ["/more", "/exercises", "/programs", "/body", "/settings", "/community", "/invite"].some((p) => path.startsWith(p));
   return path === href || path.startsWith(href + "/");
 }
 

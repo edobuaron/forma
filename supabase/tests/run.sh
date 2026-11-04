@@ -22,6 +22,7 @@ $P -d forma_test -f supabase/tests/13_energy_rating_test.sql
 $P -d forma_test -f supabase/tests/13_running_test.sql
 $P -d forma_test -f supabase/tests/17_tutorial_test.sql
 $P -d forma_test -f supabase/tests/18_working_set_positions_test.sql
+$P -d forma_test -f supabase/tests/19_social_core_test.sql
 
 # Upgrade path: an account created before migration 009 must keep everything.
 $P -d postgres -c 'drop database if exists forma_upgrade_test' -c 'create database forma_upgrade_test'

@@ -1,8 +1,9 @@
-import { ChevronRight, Dumbbell, LayoutList, Ruler, Settings } from "lucide-react";
+import { ChevronRight, Dumbbell, LayoutList, Ruler, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/misc";
 
 const ITEMS = [
+  { href: "/community", label: "Community", sub: "Friends, your gym, messages", icon: Users },
   { href: "/programs", label: "Programs", sub: "Templates, schedule, versions", icon: LayoutList },
   { href: "/exercises", label: "Exercise library", sub: "Muscles, increments, progression", icon: Dumbbell },
   { href: "/body", label: "Body measurements", sub: "Bodyweight and circumferences", icon: Ruler },
