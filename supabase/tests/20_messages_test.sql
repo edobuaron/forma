@@ -87,9 +87,9 @@ end $$;
 do $$ begin
   assert public.report_content('message', '11111111-0000-0000-0000-000000000005', 'b1000000-0000-0000-0000-00000000000b', 'spam', null) = 'reported', 'reported';
   assert (select count(*) from public.messages) = 1, 'reported message hidden for reporter';
+  -- A's own message attributed to B: refused (by report_content since 021, by the trigger before).
   begin
-    perform public.report_content('message', '11111111-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-00000000000b', 'spam', null);
-    raise exception 'should have failed';
+    assert public.report_content('message', '11111111-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-00000000000b', 'spam', null) = 'invalid', 'fake sender';
   exception when others then if sqlerrm <> 'invalid_report_target' then raise; end if; end;
 end $$;
 select pg_temp.as_user('b1000000-0000-0000-0000-00000000000b');

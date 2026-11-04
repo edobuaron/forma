@@ -1,5 +1,5 @@
 "use client";
-import { Check, ChevronRight, Link2, MapPin, MessageCircle, ShieldAlert, UserPlus, Users } from "lucide-react";
+import { Check, ChevronRight, Link2, MapPin, MessageCircle, Newspaper, ShieldAlert, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -72,12 +72,17 @@ export function CommunityHome({ data, children }: { data: CommunityData; childre
         {data.unread > 0 && <span className="grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1.5 text-[12px] font-bold text-white" aria-label={`${data.unread} unread`}>{data.unread}</span>}
         <ChevronRight className="size-4 text-muted-foreground" />
       </Link>
+      <Link href="/community/feed" className="flex min-h-[68px] items-center gap-4 rounded-lg border bg-card px-4 py-3 shadow-card transition-colors hover:border-accent/50">
+        <span className="grid size-10 place-items-center rounded-md bg-accent-soft text-accent"><Newspaper className="size-[19px]" /></span>
+        <span className="flex-1"><span className="block text-[16px] font-semibold tracking-tight">Friends feed</span><span className="block text-[13px] text-muted-foreground">Workouts friends chose to share, and your own posts</span></span>
+        <ChevronRight className="size-4 text-muted-foreground" />
+      </Link>
 
       {/* Gym card */}
       <section aria-labelledby="gym-h">
-        <SectionTitle><span id="gym-h">My gym</span></SectionTitle>
+        <SectionTitle action={data.gym ? <Link href="/community/gym" className="inline-flex h-10 items-center text-[13.5px] font-semibold text-accent">Gym settings</Link> : undefined}><span id="gym-h">My gym</span></SectionTitle>
         {data.gym ? (
-          <Link href="/community/gym" className="block rounded-lg border bg-card p-4 shadow-card transition-colors hover:border-accent/50">
+          <Link href="/community/club" className="block rounded-lg border bg-card p-4 shadow-card transition-colors hover:border-accent/50">
             <div className="flex items-start gap-3">
               <span className="grid size-11 shrink-0 place-items-center rounded-md bg-accent-soft text-accent"><MapPin className="size-5" /></span>
               <div className="min-w-0 flex-1">
