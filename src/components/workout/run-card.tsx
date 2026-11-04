@@ -1,5 +1,5 @@
 "use client";
-import { ArrowDown, ArrowUp, Check, Footprints, MoreHorizontal, Trash2 } from "lucide-react";
+import { ArrowUpDown, Check, Footprints, MoreHorizontal, Trash2 } from "lucide-react";
 import { useId } from "react";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
 import { Textarea } from "@/components/ui/input";
@@ -22,10 +22,10 @@ const SETTINGS: (RunSetting | null)[] = ["outdoor", "treadmill", null];
  * distance and a time are entered. Used live (with a Done control) and in History (always done).
  */
 export function RunCard({
-  run, unit, live, isFirst, isLast, active, onChange, onComplete, onMove, onRemove,
+  run, unit, live, isFirst, isLast, active, onChange, onComplete, onReorder, onRemove,
 }: {
   run: SessionRunRow; unit: DistanceUnit; live: boolean; isFirst: boolean; isLast: boolean; active?: boolean;
-  onChange: (patch: RunPatch) => void; onComplete?: () => void; onMove?: (dir: -1 | 1) => void; onRemove: () => void;
+  onChange: (patch: RunPatch) => void; onComplete?: () => void; onReorder?: () => void; onRemove: () => void;
 }) {
   const uid = useId();
   const plan = planSummary(run.prescribed, unit);
@@ -49,9 +49,8 @@ export function RunCard({
             <MoreHorizontal className="size-5" />
           </MenuTrigger>
           <MenuContent>
-            {onMove && <MenuItem disabled={isFirst} onSelect={() => onMove(-1)}><ArrowUp /> Move up</MenuItem>}
-            {onMove && <MenuItem disabled={isLast} onSelect={() => onMove(1)}><ArrowDown /> Move down</MenuItem>}
-            {onMove && <MenuSeparator />}
+            {onReorder && <MenuItem disabled={isFirst && isLast} onSelect={onReorder}><ArrowUpDown /> Reorder exercises</MenuItem>}
+            {onReorder && <MenuSeparator />}
             <MenuItem destructive onSelect={onRemove}><Trash2 /> Remove run</MenuItem>
           </MenuContent>
         </Menu>
