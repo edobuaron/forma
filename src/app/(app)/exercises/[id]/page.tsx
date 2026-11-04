@@ -11,8 +11,8 @@ import { exerciseCategory } from "@/lib/category";
 import { EmptyState, Stat } from "@/components/ui/misc";
 import { formatPerformance } from "@/components/workout/format";
 import { bestLoadForReps, bestRepsByLoad, MUSCLE_LABELS, sessionPoints } from "@/lib/domain/analytics";
-import { compareStreams } from "@/lib/domain/comparison";
-import { recordLabel, StreamComparisonList } from "@/components/workout/stream-comparison";
+import { compareStreams, summariseComparison } from "@/lib/domain/comparison";
+import { ComparisonSummaryLine, recordLabel, StreamComparisonList } from "@/components/workout/stream-comparison";
 import { exerciseInsights, insightCoverage } from "@/lib/domain/insights";
 import { headline, recommendFor } from "@/lib/domain/progression";
 import { prLabel, type PRType } from "@/lib/domain/prs";
@@ -53,6 +53,8 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
   const insights = exerciseInsights(cfg, history);
   const coverage = insightCoverage(history);
   const [last, prev] = history;
+  const earlier = last ? compatibleHistory(history.slice(1), last.attachment) : [];
+  const lastVsPrev = last ? compareStreams(last.sets, earlier, cfg) : [];
   const heaviest = ws.length ? ws.reduce((a, s) => ((s.weightKg ?? 0) > (a.weightKg ?? 0) ? s : a)) : null;
   const bestE1rm = points.reduce<number | null>((a, p) => (p.bestE1rmKg != null && (a == null || p.bestE1rmKg > a) ? p.bestE1rmKg : a), null);
   const repTable = bestRepsByLoad(cfg, allSets).slice(0, 8);
@@ -130,7 +132,8 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
               <CardHeader><CardTitle>Last session vs previous</CardTitle><span className="text-[12px] text-muted-foreground">{format(new Date(last.date), "d MMM")}</span></CardHeader>
               <CardContent className="space-y-1.5">
                 {last.attachment?.state && <p className="text-[12.5px] text-muted-foreground">Attachment: {attachmentLabel(last.attachment)}</p>}
-                <StreamComparisonList items={compareStreams(last.sets, compatibleHistory(history.slice(1), last.attachment), cfg)} loadType={cfg.loadType} unit={unit} />
+                <StreamComparisonList items={lastVsPrev} loadType={cfg.loadType} unit={unit} />
+                <ComparisonSummaryLine summary={summariseComparison(lastVsPrev, last.sets, earlier, cfg)} unit={unit} />
                 {!prev && <p className="text-[12.5px] text-muted-foreground">No earlier session to compare.</p>}
               </CardContent>
             </Card>

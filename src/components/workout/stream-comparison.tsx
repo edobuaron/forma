@@ -1,8 +1,8 @@
-import type { StreamComparison } from "@/lib/domain/comparison";
+import type { SessionComparisonSummary, StreamComparison } from "@/lib/domain/comparison";
 import { sideLabel } from "@/lib/domain/sides";
 import type { LoadType, WeightUnit } from "@/lib/domain/types";
 import { cn } from "@/lib/utils";
-import { comparisonText, formatSetLong } from "./format";
+import { comparisonSummaryText, comparisonText, formatSetLong } from "./format";
 
 /** Completed sets with their comparison, grouped as logged: together, then left, then right. */
 export function StreamComparisonList({ items, loadType, unit }: { items: StreamComparison[]; loadType: LoadType; unit: WeightUnit }) {
@@ -33,4 +33,16 @@ export function StreamComparisonList({ items, loadType, unit }: { items: StreamC
 /** "Left · Heaviest set" for a side record, the plain label otherwise. */
 export function recordLabel(label: string, side: "left" | "right" | null | undefined) {
   return side ? `${sideLabel[side]} · ${label}` : label;
+}
+
+/** Matched sets vs. extra work, and actual volume with set counts. Nothing when there's nothing to add. */
+export function ComparisonSummaryLine({ summary, unit }: { summary: SessionComparisonSummary; unit: WeightUnit }) {
+  const t = comparisonSummaryText(summary, unit);
+  if (!t.sets && !t.volume) return null;
+  return (
+    <div className="mt-2 space-y-0.5 text-[12.5px] leading-snug text-muted-foreground tabular">
+      {t.sets && <p>{t.sets}</p>}
+      {t.volume && <p>{t.volume}</p>}
+    </div>
+  );
 }

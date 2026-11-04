@@ -55,6 +55,12 @@ export interface LoggedSet {
    * never have this.
    */
   sides?: Record<Side, SideLog> | null;
+  /**
+   * 1-based working-set number within its stream (sets logged together, or sets with sides), stored
+   * when the workout is finished so a skipped set keeps the numbering of the sets after it
+   * (migration 018). Absent for live sets and older history: order then gives the number.
+   */
+  workingNo?: number | null;
 }
 
 /** Which cable attachment a workout recorded. state null = not recorded (unknown), "none" = no attachment. */

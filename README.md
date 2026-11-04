@@ -78,7 +78,7 @@ npm run test:db   # migrations + RLS + workout flow on a throwaway local Postgre
 
 **History is never rewritten by program edits.** Starting a workout snapshots the prescription (sets, rep range, rest, RIR) into the session. Editing or deleting templates afterwards doesn't touch past workouts, and exercises are archived rather than deleted.
 
-**Comparisons are conservative.** Sets are paired by working-set number, and warm-ups are ignored. Same load means reps decide. Same reps means load decides. When load goes up and reps go down, a lift that suits an e1RM estimate (Epley, at most 12 reps) can be called "stronger" or "similar strength". Anything else is shown neutrally as a new baseline, never as "below".
+**Comparisons are conservative.** Sets are paired by working-set number (first with first), and warm-ups and drops are ignored. A set beyond last session's sets is shown as an extra set, not compared. Same load means reps decide. Same reps means load decides. When load goes up and reps go down, a lift that suits an e1RM estimate (Epley, at most 12 reps) can be called "stronger" or "similar strength". Anything else is shown neutrally as a new baseline, never as "below".
 
 **Progression rules** (`src/lib/domain/progression.ts`):
 - No history: no load is invented. The app asks you to find a weight with about 2 reps in reserve.

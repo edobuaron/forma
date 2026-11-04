@@ -1,5 +1,6 @@
 import { nextAvailableLoad, previousAvailableLoad } from "./loads";
-import { dominantLoad, effectiveLoad, sameLoad, workingSets } from "./sets";
+import { workingPositions } from "./comparison";
+import { dominantLoad, effectiveLoad, isValidWorkingSet, sameLoad, workingSets } from "./sets";
 import { attachmentRelation, compatibleHistory, historyForSide, historyTogether, sessionMode, sideLabel } from "./sides";
 import type { AttachmentRef, ExerciseConfig, ExercisePerformance, LoggedSet, Prescription, Side, WeightUnit } from "./types";
 import { formatWeight } from "./units";
@@ -23,6 +24,7 @@ export type RecommendationAction =
   | "add_reps_or_load" // bodyweight movement at top of range
   | "skill" //            technical work — no load progression
   | "sides_baseline" //   first session recording sides separately
+  | "prescription_changed" // the plan's rep range changed too much for last session to be a fair basis
   | "hold_sides"; //      one side is ready for more load, the other isn't
 
 export interface Recommendation {
@@ -44,12 +46,38 @@ interface Options {
   conservative?: boolean;
 }
 
-function loadOf(sets: LoggedSet[], ex: ExerciseConfig): number | null {
-  return dominantLoad(sets, ex);
+/**
+ * The prescribed comparable working sets: valid sets at working-set positions 1..required, in order.
+ * Extra sets beyond the plan are additional work: they neither penalise progression nor earn an
+ * increase. Warm-ups and drops never take a position. When no planned position holds a valid set,
+ * whatever valid sets exist are used so the load can still be read.
+ */
+function plannedSets(sets: LoggedSet[], ex: ExerciseConfig, required: number): LoggedSet[] {
+  const valid = workingPositions(sets).filter((p) => isValidWorkingSet(p.set, ex));
+  const planned = valid.filter((p) => p.pos < required);
+  return (planned.length ? planned : valid).map((p) => p.set);
 }
 
-function setsAt(sets: LoggedSet[], ex: ExerciseConfig, load: number): LoggedSet[] {
-  return workingSets(sets, ex).filter((s) => sameLoad(effectiveLoad(s, ex), load));
+/** Sets at planned positions, keeping each set's position, for pairing two sessions set by set. */
+function plannedPositions(sets: LoggedSet[], ex: ExerciseConfig, required: number) {
+  return workingPositions(sets).filter((p) => p.pos < required && isValidWorkingSet(p.set, ex));
+}
+
+function extraSets(sets: LoggedSet[], ex: ExerciseConfig, required: number): number {
+  return workingPositions(sets).filter((p) => p.pos >= required && isValidWorkingSet(p.set, ex)).length;
+}
+
+function loadOf(sets: LoggedSet[], ex: ExerciseConfig, required: number): number | null {
+  return dominantLoad(plannedSets(sets, ex, required), ex);
+}
+
+function setsAt(sets: LoggedSet[], ex: ExerciseConfig, load: number, required: number): LoggedSet[] {
+  return plannedSets(sets, ex, required).filter((s) => sameLoad(effectiveLoad(s, ex), load));
+}
+
+/** Rep ranges that don't overlap: last session's reps say nothing fair about the new target. */
+function rangeChanged(prev: Prescription | null, cur: Prescription): boolean {
+  return !!prev && (cur.repMin > prev.repMax || cur.repMax < prev.repMin);
 }
 
 function totalReps(sets: LoggedSet[]): number {
@@ -79,6 +107,29 @@ export function recommend(
   history: ExercisePerformance[], // newest first, completed sessions only
   opts: Options = {},
 ): Recommendation {
+  const rec = recommendPlanned(ex, prescription, history, opts);
+  const last = history.find((h) => workingSets(h.sets, ex).length > 0);
+  if (!last || rec.action === "first_time") return rec;
+  const notes: string[] = [];
+  const lastRequired = last.prescription?.sets;
+  // Extra relative to that session's own plan; a plan change is explained separately.
+  const lastPlan = lastRequired ?? prescription.sets;
+  const extra = extraSets(last.sets, ex, lastPlan);
+  if (extra > 0) {
+    notes.push(`Last session had ${extra} extra set${extra === 1 ? "" : "s"} beyond the ${lastPlan} planned. Extra sets are counted as additional work, not used for this suggestion.`);
+  }
+  if (lastRequired != null && lastRequired !== prescription.sets && rec.action !== "prescription_changed") {
+    notes.push(`The plan now has ${prescription.sets} sets (last time ${lastRequired}). Only sets at the same position are compared.`);
+  }
+  return notes.length ? { ...rec, reasons: [...rec.reasons, ...notes] } : rec;
+}
+
+function recommendPlanned(
+  ex: ExerciseConfig,
+  prescription: Prescription,
+  history: ExercisePerformance[],
+  opts: Options,
+): Recommendation {
   const conservative = opts.conservative ?? true;
   const { repMin, repMax, sets: required } = prescription;
   const sessions = history.filter((h) => workingSets(h.sets, ex).length > 0);
@@ -98,8 +149,8 @@ export function recommend(
     };
   }
 
-  const lastLoad = loadOf(last.sets, ex)!;
-  const lastAtLoad = setsAt(last.sets, ex, lastLoad);
+  const lastLoad = loadOf(last.sets, ex, required)!;
+  const lastAtLoad = setsAt(last.sets, ex, lastLoad, required);
   const displayLoad = toDisplayLoad(lastLoad, ex);
   const lastReps = lastAtLoad.map((s) => s.reps ?? 0);
   const repsText = lastReps.join(" / ");
@@ -114,9 +165,25 @@ export function recommend(
     return { action: "skill", targetLoadKg: displayLoad, targetReps: null, reasons, evidenceSessionId: evidence };
   }
 
+  // The plan's rep range moved past last session's: its reps aren't a fair basis for a load change.
+  if (rangeChanged(last.prescription, prescription)) {
+    const p = last.prescription!;
+    return {
+      action: "prescription_changed",
+      targetLoadKg: null,
+      targetReps: null,
+      reasons: [
+        `The plan changed from ${p.repMin}–${p.repMax} to ${repMin}–${repMax} reps, so last session (${repsText} at this load) can't be compared fairly.`,
+        `Choose a load you can lift for about ${Math.max(repMin, repMax - 2)} reps with 2 reps in reserve. Sessions with the new range are compared from next time.`,
+      ],
+      evidenceSessionId: evidence,
+    };
+  }
+
   // Fewer sets than planned last time → keep the load. Omitted sets are not failed sets: the completed
   // ones are real data, but too few to justify an increase, and they say nothing about a decline.
-  const completedCount = workingSets(last.sets, ex).length;
+  // Counted at planned positions only: an extra set doesn't make up for a skipped planned one.
+  const completedCount = plannedPositions(last.sets, ex, required).length;
   const lastRequired = last.prescription?.sets ?? required;
   if (completedCount < Math.min(required, lastRequired)) {
     const reason = last.shortfallReason ?? null;
@@ -135,20 +202,30 @@ export function recommend(
   }
 
   // Below recent performance at the same load → hold (requires a comparable prior session).
+  // Sets are paired by position (first with first) and only where both sessions used this load;
+  // totals over unequal numbers of sets are never compared.
+  // A session short of its plan isn't "normal performance", so it isn't the reference either.
   const prior = sessions.slice(1).find((h) => {
-    const l = loadOf(h.sets, ex);
-    return l != null && sameLoad(l, lastLoad);
+    const l = loadOf(h.sets, ex, required);
+    const full = plannedPositions(h.sets, ex, required).length >= Math.min(required, h.prescription?.sets ?? required);
+    return l != null && sameLoad(l, lastLoad) && full;
   });
   if (prior) {
-    const priorReps = totalReps(setsAt(prior.sets, ex, lastLoad).slice(0, lastAtLoad.length));
-    const nowReps = totalReps(lastAtLoad);
-    if (priorReps - nowReps >= 2 && (priorReps - nowReps) / priorReps >= 0.08) {
+    const atLoad = (sets: LoggedSet[]) => plannedPositions(sets, ex, required).filter((p) => sameLoad(effectiveLoad(p.set, ex), lastLoad));
+    const priorAt = atLoad(prior.sets);
+    const pairs = atLoad(last.sets).flatMap((n) => {
+      const p = priorAt.find((q) => q.pos === n.pos);
+      return p ? [{ now: n.set.reps ?? 0, before: p.set.reps ?? 0 }] : [];
+    });
+    const priorReps = pairs.reduce((a, x) => a + x.before, 0);
+    const nowReps = pairs.reduce((a, x) => a + x.now, 0);
+    if (pairs.length > 0 && priorReps - nowReps >= 2 && (priorReps - nowReps) / priorReps >= 0.08) {
       return {
         action: "hold_below",
         targetLoadKg: displayLoad,
-        targetReps: setsAt(prior.sets, ex, lastLoad).slice(0, lastAtLoad.length).map((s) => s.reps ?? 0),
+        targetReps: pairs.map((x) => x.before),
         reasons: [
-          `Last session (${repsText}) was below your previous session at this load (${priorReps} vs ${nowReps} total reps).`,
+          `Last session (${repsText}) was below your previous session at this load: ${nowReps} vs ${priorReps} reps over the same ${pairs.length} set${pairs.length === 1 ? "" : "s"}.`,
           "One lower session isn't a trend. Keep the load and aim to match your previous reps.",
         ],
         evidenceSessionId: evidence,
@@ -159,7 +236,7 @@ export function recommend(
   // Repeatedly below the rep range at the same load → suggest (not apply) a reduction.
   const lastAvg = totalReps(lastAtLoad) / Math.max(1, lastAtLoad.length);
   if (prior && lastAvg < repMin) {
-    const priorAt = setsAt(prior.sets, ex, lastLoad);
+    const priorAt = setsAt(prior.sets, ex, lastLoad, required);
     const priorAvg = totalReps(priorAt) / Math.max(1, priorAt.length);
     if (priorAvg < repMin) {
       const lower =
@@ -224,9 +301,9 @@ export function recommend(
 
   if (ex.progression === "reps_first") {
     const prev = sessions[1];
-    const prevLoad = prev ? loadOf(prev.sets, ex) : null;
+    const prevLoad = prev ? loadOf(prev.sets, ex, required) : null;
     const confirmed =
-      prev && prevLoad != null && sameLoad(prevLoad, lastLoad) && allAtTop(setsAt(prev.sets, ex, lastLoad), repMax, required);
+      prev && prevLoad != null && sameLoad(prevLoad, lastLoad) && allAtTop(setsAt(prev.sets, ex, lastLoad, required), repMax, required);
     if (!confirmed) {
       return {
         action: "hold_confirm",
@@ -289,7 +366,7 @@ export interface LoggingContext {
 
 // Most conservative first: when the two sides disagree, the combined advice follows the earlier one.
 const CAUTION: RecommendationAction[] = [
-  "hold_shortened", "hold_incomplete", "hold_below", "consider_reduce", "hold_effort", "hold_confirm",
+  "prescription_changed", "hold_shortened", "hold_incomplete", "hold_below", "consider_reduce", "hold_effort", "hold_confirm",
   "hold_sides", "hold_build_reps", "first_time", "sides_baseline", "add_reps_or_load", "skill", "increase_load",
 ];
 
@@ -298,7 +375,7 @@ const sameTarget = (a: number | null, b: number | null) => (a == null || b == nu
 /** A side that met the criteria for more load, held at its current load because the other side didn't. */
 function holdAtCurrent(rec: Recommendation, sideHistory: ExercisePerformance[], ex: ExerciseConfig, prescription: Prescription): Recommendation {
   const last = sideHistory.find((h) => workingSets(h.sets, ex).length > 0);
-  const load = last ? loadOf(last.sets, ex) : null;
+  const load = last ? loadOf(last.sets, ex, prescription.sets) : null;
   return {
     ...rec,
     action: "hold_sides",
@@ -387,7 +464,7 @@ export function recommendFor(
   });
   if (left.action === "first_time" && right.action === "first_time" && ex.progression !== "skill") {
     const last = historyTogether(compatible).find((h) => workingSets(h.sets, ex).length > 0);
-    const load = last ? loadOf(last.sets, ex) : null;
+    const load = last ? loadOf(last.sets, ex, prescription.sets) : null;
     if (last && load != null) {
       const start: Recommendation = {
         action: "sides_baseline",
@@ -440,6 +517,8 @@ export function headline(rec: Recommendation, ex: ExerciseConfig, unit: WeightUn
       return "Top of range reached. Add reps or a small load.";
     case "sides_baseline":
       return w ? `First time logging sides separately. Start each side at ${loadLabel(w)}.` : "First time logging sides separately.";
+    case "prescription_changed":
+      return "New rep range — choose a load for it with ~2 reps in reserve.";
     case "hold_sides":
       return w ? `Keep ${loadLabel(w)}.` : "Keep the current load on each side.";
   }
@@ -474,6 +553,8 @@ function sidesHeadline(rec: Recommendation, ex: ExerciseConfig, unit: WeightUnit
       return `Not every side completed its planned sets last time. Keep ${loads ?? "each side's load"} and resume them.`;
     case "add_reps_or_load":
       return "Top of range reached on both sides. Add reps or a small load.";
+    case "prescription_changed":
+      return "New rep range — choose a load for each side with ~2 reps in reserve.";
     default:
       return loads ? `Keep ${loads}.${aim}` : `Keep each side's load.${aim}`;
   }

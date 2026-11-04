@@ -1,6 +1,6 @@
-import type { SetComparison } from "@/lib/domain/comparison";
+import type { SessionComparisonSummary, SetComparison } from "@/lib/domain/comparison";
 import type { LoadType, LoggedSet, WeightUnit } from "@/lib/domain/types";
-import { formatWeight, kgToDisplay } from "@/lib/domain/units";
+import { formatVolume, formatWeight, kgToDisplay } from "@/lib/domain/units";
 import { sessionMode, sideShort, sideStream } from "@/lib/domain/sides";
 
 export function loadColumnLabel(loadType: LoadType, unit: WeightUnit) {
@@ -49,6 +49,8 @@ export function comparisonText(c: SetComparison, unit: WeightUnit, loadType: Loa
   switch (c.status) {
     case "no_previous":
       return null;
+    case "extra":
+      return { text: "Extra set — no previous comparison", tone: "neutral" };
     case "matched":
       return c.basis === "e1rm" ? { text: "Similar strength (est.)", tone: "neutral" } : { text: "Matched", tone: "neutral" };
     case "not_comparable":
@@ -79,4 +81,23 @@ export function formatPerformance(sets: LoggedSet[], loadType: LoadType, unit: W
   if (mode === "together") return formatSetsCompact(valid, loadType, unit);
   if (mode === "sides") return formatSidesCompact(sets, loadType, unit);
   return `${formatSetsCompact(valid, loadType, unit)} · ${formatSidesCompact(sets, loadType, unit)}`;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * "2 comparable sets · 1 extra set" and, separately, actual volume with its set counts, e.g.
+ * "Volume 1,200 kg over 3 sets · last time 900 kg over 2 sets". Matched-set performance and
+ * additional work are never folded into one verdict.
+ */
+export function comparisonSummaryText(c: SessionComparisonSummary, unit: WeightUnit): { sets: string | null; volume: string | null } {
+  const sets = c.previous && (c.extra > 0 || c.fewer > 0)
+    ? [plural(c.comparable, "comparable set"), c.extra > 0 && plural(c.extra, "extra set"), c.fewer > 0 && `${plural(c.fewer, "set")} fewer than last time`].filter(Boolean).join(" · ")
+    : null;
+  const showVolume = c.current.volumeKg > 0 || (c.previous?.volumeKg ?? 0) > 0;
+  const volume = showVolume
+    ? `Volume ${formatVolume(c.current.volumeKg, unit)} over ${plural(c.current.sets, "set")}` +
+      (c.previous ? ` · last time ${formatVolume(c.previous.volumeKg, unit)} over ${plural(c.previous.sets, "set")}` : "")
+    : null;
+  return { sets, volume };
 }

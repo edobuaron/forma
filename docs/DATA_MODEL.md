@@ -72,6 +72,7 @@ Sessions reference templates with `on delete set null`; they never depend on the
 ## Warm-ups and drop sets (migration 013)
 
 - `set_logs.kind` is `warmup`, `working` or `drop`. Only `working` rows are planned sets: completion, comparisons, progression, records and working-set volume read them and nothing else. Warm-up work is shown on its own ("not counted").
+- `set_logs.working_no` (migration 018): a working set's 1-based number within its exercise and stream (together / sides), assigned by `finish_workout` before unfinished sets are removed, so a skipped set leaves a gap. Null for older rows and live sets, which are numbered by order. `save_session_edit` leaves it unchanged.
 - A drop set is a working set followed by drop segments: rows with `kind = 'drop'` and `drop_parent_id` pointing at the working set (same exercise in the same workout; deleting the parent deletes its segments). Each segment has its own load, reps, RIR, completion and, under a left/right parent, its own sides. Loads are entered by the user; nothing is suggested or derived from a percentage.
 - The sequence counts as one planned set. Completed drop work is drop volume: summaries show "total volume = working + drops", and charts of working volume never include it.
 - `finish_workout` refuses a completed drop under a set that isn't completed; `save_session_edit` takes `drop_parent_id` per set and requires each drop to follow a working set of its exercise. Rules: `src/lib/domain/drops.ts`.

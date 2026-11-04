@@ -237,6 +237,8 @@ export interface SetLogRow extends SideColumns {
   notes: string | null;
   /** The working set a drop segment continues; null otherwise (migration 013). */
   drop_parent_id?: string | null;
+  /** Working-set number within its stream, stored at finish (migration 018). */
+  working_no?: number | null;
 }
 
 export interface SetHistoryRow extends Omit<SideColumns, "left_completed_at" | "right_completed_at"> {
@@ -263,6 +265,8 @@ export interface SetHistoryRow extends Omit<SideColumns, "left_completed_at" | "
   attachment_id: string | null;
   attachment_name: string | null;
   drop_parent_id?: string | null;
+  /** Working-set number within its stream, stored at finish (migration 018). Absent before it. */
+  working_no?: number | null;
 }
 
 export interface PersonalRecordRow {
@@ -320,7 +324,7 @@ export function toPrescription(p: PrescribedJson | null | undefined, ex?: Exerci
 }
 
 type LoggedSetSource = Pick<SetLogRow, "kind" | "weight_kg" | "assistance_kg" | "reps" | "rir" | "completed">
-  & Partial<Omit<SideColumns, "left_completed_at" | "right_completed_at">>;
+  & Partial<Omit<SideColumns, "left_completed_at" | "right_completed_at">> & { working_no?: number | null };
 
 export function toLoggedSet(r: LoggedSetSource): LoggedSet {
   const side = (p: "left" | "right") => ({
@@ -338,6 +342,7 @@ export function toLoggedSet(r: LoggedSetSource): LoggedSet {
     rir: num(r.rir),
     completed: r.completed,
     sides: r.sided ? { left: side("left"), right: side("right") } : null,
+    workingNo: r.working_no ?? null,
   };
 }
 
