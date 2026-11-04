@@ -1,5 +1,5 @@
 "use client";
-import { Check, ChevronRight, Link2, MapPin, ShieldAlert, UserPlus, Users } from "lucide-react";
+import { Check, ChevronRight, Link2, MapPin, MessageCircle, ShieldAlert, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -11,6 +11,7 @@ import {
   cancelFriendRequest, createInvite, respondFriendRequest, sendFriendRequest, unblockUser,
   type Blocked, type Friend, type FriendRequest, type GymCounts, type Membership, type Person,
 } from "@/lib/data/social";
+import { openConversation } from "@/lib/data/messages";
 import { gymBadge, gymLocation, requestMessage, requestSucceeded, type Gym } from "@/lib/domain/social";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar, Panel, PersonMenu } from "./common";
@@ -24,6 +25,7 @@ export type CommunityData = {
   requests: FriendRequest[];
   blocked: Blocked[];
   restricted: boolean;
+  unread: number;
 };
 
 export function CommunityHome({ data, children }: { data: CommunityData; children?: React.ReactNode }) {
@@ -63,6 +65,13 @@ export function CommunityHome({ data, children }: { data: CommunityData; childre
       )}
 
       {children}
+
+      <Link href="/community/messages" className="flex min-h-[68px] items-center gap-4 rounded-lg border bg-card px-4 py-3 shadow-card transition-colors hover:border-accent/50">
+        <span className="grid size-10 place-items-center rounded-md bg-accent-soft text-accent"><MessageCircle className="size-[19px]" /></span>
+        <span className="flex-1"><span className="block text-[16px] font-semibold tracking-tight">Messages</span><span className="block text-[13px] text-muted-foreground">Private conversations and invitations to train</span></span>
+        {data.unread > 0 && <span className="grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1.5 text-[12px] font-bold text-white" aria-label={`${data.unread} unread`}>{data.unread}</span>}
+        <ChevronRight className="size-4 text-muted-foreground" />
+      </Link>
 
       {/* Gym card */}
       <section aria-labelledby="gym-h">
@@ -162,6 +171,10 @@ export function CommunityHome({ data, children }: { data: CommunityData; childre
               <div key={f.user_id} className="flex min-h-16 items-center gap-3 px-4 py-2.5">
                 <Avatar name={f.display_name} />
                 <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{f.display_name}</span>
+                <Button size="sm" variant="outline" className="h-10" disabled={busy === f.user_id || data.restricted}
+                  onClick={async () => { setBusy(f.user_id); try { const id = await openConversation(createClient(), f.user_id); router.push(`/community/messages/${id}`); } catch (e) { toast.error((e as Error).message); setBusy(null); } }}>
+                  <MessageCircle /> Message
+                </Button>
                 <PersonMenu userId={f.user_id} name={f.display_name} isFriend />
               </div>
             ))}
