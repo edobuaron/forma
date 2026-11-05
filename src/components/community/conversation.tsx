@@ -1,12 +1,12 @@
 "use client";
-import { ArrowLeft, Ban, Bell, BellOff, CalendarClock, Flag, MapPin, MoreHorizontal, RotateCw, Send } from "lucide-react";
+import { ArrowLeft, Ban, Bell, BellOff, CalendarClock, Flag, Info, Lock, MapPin, MoreHorizontal, RotateCw, Send, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/dropdown";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
@@ -18,7 +18,7 @@ import { browserZone, inviteError, inviteStatusLabel, inviteTimeLines, isValidZo
 import type { Gym } from "@/lib/domain/social";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { Avatar, ReportSheet, type ReportSubject } from "./common";
+import { Avatar, Local, ReportSheet, useMounted, type ReportSubject } from "./common";
 
 type Local = Message & { state?: "sending" | "failed"; error?: string };
 
@@ -33,17 +33,30 @@ function uuid() {
     : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (Number(c) ^ (Math.random() * 16) >> (Number(c) / 4)).toString(16));
 }
 
-function timeLabel(iso: string) {
+function clock(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+function dayKey(iso: string) {
+  return new Date(iso).toDateString();
+}
+function dayLabel(iso: string) {
   const d = new Date(iso);
-  const today = new Date().toDateString() === d.toDateString();
-  return d.toLocaleString(undefined, today ? { hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const days = Math.round((new Date(new Date().toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, days < 7 ? { weekday: "long" } : { weekday: "short", day: "numeric", month: "short" });
+}
+function gap(a: Message, b: Message) {
+  return (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) / 1000;
 }
 
 const EVENT_COPY: Record<string, string> = { accepted: "accepted the invitation", declined: "declined the invitation", proposed: "proposed a different time", cancelled: "cancelled the invitation" };
 
-export function Conversation({ conversationId, me, info, initialMessages, initialInvites, myGym, workoutNames }: {
+export function Conversation({ conversationId, me, info, initialMessages, initialInvites, myGym, workoutNames, live = true }: {
   conversationId: string; me: string; info: ConversationInfo; initialMessages: Message[]; initialInvites: TrainingInvite[];
   myGym: Gym | null; workoutNames: string[];
+  /** False only for fixture previews: no realtime, polling or read receipts. */
+  live?: boolean;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Local[]>(initialMessages);
@@ -52,9 +65,12 @@ export function Conversation({ conversationId, me, info, initialMessages, initia
   const [muted, setMutedState] = useState(info.muted);
   const [reporting, setReporting] = useState<ReportSubject | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [proposeFor, setProposeFor] = useState<TrainingInvite | null>(null);
-  const bottom = useRef<HTMLDivElement>(null);
+  const bottom = useRef<HTMLLIElement>(null);
   const canSend = info.can_send === "ok";
+  // Day separators and times use the viewer's zone, so the list renders in the browser only.
+  const mounted = useMounted();
   const name = info.display_name;
 
   const merge = useCallback((rows: Message[]) => {
@@ -76,6 +92,7 @@ export function Conversation({ conversationId, me, info, initialMessages, initia
 
   // Live updates. RLS limits Realtime to the two participants; a slow poll covers dropped connections.
   useEffect(() => {
+    if (!live) return;
     const db = createClient();
     const ch = db.channel(`conversation:${conversationId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
@@ -85,13 +102,13 @@ export function Conversation({ conversationId, me, info, initialMessages, initia
       .subscribe();
     const poll = setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 20000);
     return () => { clearInterval(poll); void db.removeChannel(ch); };
-  }, [conversationId, merge, refresh]);
+  }, [conversationId, merge, refresh, live]);
 
   const lastIncoming = useMemo(() => [...messages].reverse().find((m) => m.sender_id !== me)?.id, [messages, me]);
   useEffect(() => {
-    if (document.visibilityState === "visible") void markRead(createClient(), conversationId);
-  }, [conversationId, lastIncoming]);
-  useEffect(() => { bottom.current?.scrollIntoView({ block: "end" }); }, [messages.length]);
+    if (live && document.visibilityState === "visible") void markRead(createClient(), conversationId);
+  }, [conversationId, lastIncoming, live]);
+  useEffect(() => { requestAnimationFrame(() => bottom.current?.scrollIntoView({ block: "end" })); }, [messages.length, mounted]);
 
   async function deliver(m: Local) {
     setMessages((cur) => cur.map((x) => (x.id === m.id ? { ...x, state: "sending", error: undefined } : x)));
@@ -126,81 +143,107 @@ export function Conversation({ conversationId, me, info, initialMessages, initia
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-9rem)] max-w-2xl flex-col md:h-[calc(100dvh-4rem)]">
-      <header className="flex items-center gap-2 border-b pb-3">
-        <Link href="/community/messages" aria-label="Back to messages" className="grid size-11 place-items-center rounded-full hover:bg-muted"><ArrowLeft className="size-5" /></Link>
-        <Avatar name={name} />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[17px] font-bold tracking-tight">{name}</h1>
-          <p className="text-[12px] text-muted-foreground">Private conversation · not end-to-end encrypted</p>
-        </div>
-        <Menu>
-          <MenuTrigger className="grid size-11 place-items-center rounded-full outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" aria-label="Conversation options"><MoreHorizontal className="size-5" /></MenuTrigger>
-          <MenuContent>
-            <MenuItem onSelect={async () => { try { await setMuted(createClient(), conversationId, !muted); setMutedState(!muted); toast.success(muted ? "Unmuted" : "Muted. It won't count in your unread badge."); } catch (e) { toast.error((e as Error).message); } }}>
-              {muted ? <Bell /> : <BellOff />} {muted ? "Unmute" : "Mute"}
-            </MenuItem>
-            <MenuItem onSelect={() => setReporting({ type: "user", id: info.other_id, user: info.other_id, label: name })}><Flag /> Report {name}</MenuItem>
-            <MenuSeparator />
-            <MenuItem destructive onSelect={async () => {
-              if (!confirm(`Block ${name}? They won't be able to message or invite you, open invitations are cancelled, and they won't be told.`)) return;
-              try { await blockUser(createClient(), info.other_id); toast.success(`${name} blocked`); router.push("/community"); router.refresh(); } catch (e) { toast.error((e as Error).message); }
-            }}><Ban /> Block</MenuItem>
-          </MenuContent>
-        </Menu>
+    <div className="mx-auto flex h-[calc(100dvh-9rem)] max-w-2xl flex-col md:h-[calc(100dvh-5rem)]">
+      <header className="-mx-4 flex items-center gap-2 border-b px-4 pb-2.5 md:mx-0 md:px-0">
+        <Link href="/community/inbox" aria-label="Back to inbox" className="-ml-2.5 grid size-11 place-items-center rounded-full hover:bg-muted"><ArrowLeft className="size-[22px]" /></Link>
+        <Link href={`/community/u/${info.other_id}`} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full pr-2">
+          <Avatar name={name} id={info.other_id} className="size-9 text-[13px]" />
+          <span className="min-w-0">
+            <h1 className="truncate text-[16px] font-bold leading-tight tracking-tight">{name}</h1>
+            {muted && <span className="flex items-center gap-1 text-[12px] text-muted-foreground"><BellOff className="size-3" /> Muted</span>}
+          </span>
+        </Link>
+        {canSend && <button type="button" onClick={() => setInviteOpen(true)} aria-label="Invite to train" className="grid size-11 place-items-center rounded-full hover:bg-muted"><CalendarClock className="size-[22px]" /></button>}
+        <button type="button" onClick={() => setInfoOpen(true)} aria-label="Conversation details" className="-mr-2.5 grid size-11 place-items-center rounded-full hover:bg-muted"><Info className="size-[22px]" /></button>
       </header>
 
-      <ol className="min-h-0 flex-1 space-y-2 overflow-y-auto py-4" aria-live="polite" aria-label={`Messages with ${name}`}>
-        {messages.length === 0 && <li className="py-10 text-center text-[14px] text-muted-foreground">Say hi to {name}. Only the two of you can read this conversation.</li>}
-        {messages.map((m) => {
+      <ol className="min-h-0 flex-1 overflow-y-auto py-4" aria-live="polite" aria-label={`Messages with ${name}`}>
+        {messages.length === 0 && (
+          <li className="flex flex-col items-center py-12 text-center">
+            <Avatar name={name} id={info.other_id} className="size-20 text-[26px]" />
+            <p className="mt-3 text-[17px] font-semibold">{name}</p>
+            <p className="mt-1 text-[14px] text-muted-foreground">Say hi, or invite {name.split(" ")[0]} to train.</p>
+          </li>
+        )}
+        {mounted && messages.map((m, idx) => {
           const mine = m.sender_id === me;
+          const prev = messages[idx - 1];
+          const next = messages[idx + 1];
+          const newDay = !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
+          const sep = newDay ? <li key={`d-${m.id}`} className="py-3 text-center text-[12px] font-semibold text-muted-foreground">{dayLabel(m.created_at)}</li> : null;
           if (m.kind === "invite_event") {
-            return <li key={m.id} className="py-1 text-center text-[12.5px] text-muted-foreground">{mine ? "You" : name} {EVENT_COPY[m.body ?? ""] ?? "updated the invitation"} · {timeLabel(m.created_at)}</li>;
+            return [sep, <li key={m.id} className="py-1.5 text-center text-[12.5px] text-muted-foreground">{mine ? "You" : name} {EVENT_COPY[m.body ?? ""] ?? "updated the invitation"} · {clock(m.created_at)}</li>];
           }
           if (m.kind === "invite" && m.invite_id) {
             const inv = invites[m.invite_id];
-            return <li key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>{inv ? <InviteCard invite={inv} me={me} name={name} canAct={canSend} onAct={act} onPropose={setProposeFor} /> : null}</li>;
+            return [sep, <li key={m.id} className={cn("flex py-1.5", mine ? "justify-end" : "justify-start")}>{inv ? <InviteCard invite={inv} me={me} name={name} canAct={canSend} onAct={act} onPropose={setProposeFor} /> : null}</li>];
           }
-          return (
-            <li key={m.id} className={cn("group flex items-end gap-1", mine ? "justify-end" : "justify-start")}>
-              <div className={cn("max-w-[80%] rounded-2xl px-3.5 py-2", mine ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-subtle")}>
-                <p className="whitespace-pre-wrap break-words text-[15px] leading-snug">{m.body}</p>
-                <p className={cn("mt-0.5 text-[11px]", mine ? "text-primary-foreground/75" : "text-muted-foreground")}>
-                  {m.state === "sending" ? "Sending…" : m.state === "failed" ? "Not sent" : timeLabel(m.created_at)}
-                </p>
-              </div>
+          // Consecutive texts from the same person within a few minutes form one group; the time shows once, under the last.
+          const joinsPrev = !newDay && prev?.kind === "text" && prev.sender_id === m.sender_id && gap(prev, m) < 300;
+          const joinsNext = !!next && next.kind === "text" && next.sender_id === m.sender_id && dayKey(next.created_at) === dayKey(m.created_at) && gap(m, next) < 300;
+          const status = m.state === "sending" ? "Sending…" : m.state === "failed" ? "Not sent" : !joinsNext ? clock(m.created_at) : null;
+          return [sep, (
+            <li key={m.id} className={cn("group flex items-end gap-1", mine ? "justify-end" : "justify-start", joinsPrev ? "mt-0.5" : "mt-3")}>
               {!mine && (
                 <Menu>
-                  <MenuTrigger className="grid size-9 place-items-center rounded-full text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" aria-label="Message options"><MoreHorizontal className="size-4" /></MenuTrigger>
+                  <MenuTrigger className="order-last grid size-8 place-items-center rounded-full text-muted-foreground opacity-0 outline-none hover:bg-muted focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100" aria-label="Message options"><MoreHorizontal className="size-4" /></MenuTrigger>
                   <MenuContent align="start">
                     <MenuItem onSelect={() => setReporting({ type: "message", id: m.id, user: m.sender_id, label: "message" })}><Flag /> Report message</MenuItem>
                   </MenuContent>
                 </Menu>
               )}
-              {m.state === "failed" && (
-                <div className="flex flex-col items-end">
-                  <Button size="sm" variant="ghost" className="h-9 text-destructive" onClick={() => deliver(m)} aria-label={`Retry sending: ${m.error}`}><RotateCw /> Retry</Button>
+              <div className={cn("flex max-w-[78%] flex-col", mine ? "items-end" : "items-start")}>
+                <div className={cn("rounded-[20px] px-3.5 py-2",
+                  mine ? "bg-primary text-primary-foreground" : "bg-subtle",
+                  mine ? (joinsPrev ? "rounded-tr-md" : "") + (joinsNext ? " rounded-br-md" : "") : (joinsPrev ? "rounded-tl-md" : "") + (joinsNext ? " rounded-bl-md" : ""),
+                  m.state === "failed" && "opacity-60")}>
+                  <p className="whitespace-pre-wrap break-words text-[15px] leading-snug">{m.body}</p>
                 </div>
+                {status && <p className={cn("mt-1 px-1 text-[11px]", m.state === "failed" ? "text-destructive" : "text-muted-foreground")}>{status}</p>}
+              </div>
+              {m.state === "failed" && (
+                <Button size="sm" variant="ghost" className="h-9 text-destructive" onClick={() => deliver(m)} aria-label={`Retry sending: ${m.error}`}><RotateCw /> Retry</Button>
               )}
             </li>
-          );
+          )];
         })}
-        {messages.filter((m) => m.state === "failed").slice(-1).map((m) => <li key={`err-${m.id}`} role="alert" className="text-right text-[12.5px] text-destructive">{m.error}</li>)}
-        <div ref={bottom} />
+        {messages.filter((m) => m.state === "failed").slice(-1).map((m) => <li key={`err-${m.id}`} role="alert" className="mt-1 text-right text-[12.5px] text-destructive">{m.error}</li>)}
+        <li ref={bottom} aria-hidden className="h-1" />
       </ol>
 
       {canSend ? (
         <form className="flex items-end gap-2 border-t pt-3" onSubmit={(e) => { e.preventDefault(); send(); }}>
-          <Button type="button" variant="outline" size="icon" className="size-11 shrink-0" aria-label="Invite to train" onClick={() => setInviteOpen(true)}><CalendarClock className="size-5" /></Button>
           <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} maxLength={2000} placeholder={`Message ${name}`} aria-label="Message"
-            className="max-h-32 min-h-11 flex-1 resize-none py-2.5"
+            className="max-h-32 min-h-11 flex-1 resize-none rounded-[22px] px-4 py-2.5"
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} />
-          <Button type="submit" variant="primary" size="icon" className="size-11 shrink-0" aria-label="Send" disabled={!text.trim()}><Send className="size-5" /></Button>
+          <Button type="submit" variant="primary" size="icon" className="size-11 shrink-0 rounded-full" aria-label="Send" disabled={!text.trim()}><Send className="size-5" /></Button>
         </form>
       ) : (
         <p className="border-t pt-3 text-center text-[13px] text-muted-foreground">{CAN_SEND_COPY[info.can_send] ?? CAN_SEND_COPY.unavailable}</p>
       )}
 
+      <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
+        <SheetContent title={name}>
+          <div className="divide-y rounded-lg border">
+            <button type="button" className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-[15px] hover:bg-muted" onClick={async () => {
+              try { await setMuted(createClient(), conversationId, !muted); setMutedState(!muted); toast.success(muted ? "Unmuted" : "Muted. It won't count in your unread badge."); } catch (e) { toast.error((e as Error).message); }
+            }}>{muted ? <Bell className="size-5" /> : <BellOff className="size-5" />} {muted ? "Unmute" : "Mute"}</button>
+            <Link href={`/community/u/${info.other_id}`} className="flex min-h-12 items-center gap-3 px-4 text-[15px] hover:bg-muted"><UserRound className="size-5" /> View profile</Link>
+            <button type="button" className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-[15px] hover:bg-muted" onClick={() => { setInfoOpen(false); setReporting({ type: "user", id: info.other_id, user: info.other_id, label: name }); }}><Flag className="size-5" /> Report {name}</button>
+            <button type="button" className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-[15px] text-destructive hover:bg-destructive/10" onClick={async () => {
+              if (!confirm(`Block ${name}? They won't be able to message or invite you, open invitations are cancelled, and they won't be told.`)) return;
+              try { await blockUser(createClient(), info.other_id); toast.success(`${name} blocked`); router.push("/community"); router.refresh(); } catch (e) { toast.error((e as Error).message); }
+            }}><Ban className="size-5" /> Block</button>
+          </div>
+          <section aria-labelledby="privacy-h" className="mt-5 flex gap-3 text-[13.5px]">
+            <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div>
+              <h2 id="privacy-h" className="font-semibold">Privacy</h2>
+              <p className="mt-0.5 text-muted-foreground">Only you and {name} can read this conversation in Forma. Messages are encrypted in transit and stored on Forma&apos;s servers; they aren&apos;t end-to-end encrypted. Reported messages are reviewed.</p>
+            </div>
+          </section>
+        </SheetContent>
+      </Sheet>
       <ReportSheet subject={reporting} onClose={() => setReporting(null)} onReported={() => { if (reporting?.type === "message") setMessages((cur) => cur.filter((x) => x.id !== reporting.id)); }} />
       <InviteSheet open={inviteOpen} onOpenChange={setInviteOpen} to={info.other_id} name={name} myGym={myGym} workoutNames={workoutNames} onSent={refresh} />
       <ProposeSheet invite={proposeFor} onClose={() => setProposeFor(null)} onDone={refresh} />
@@ -225,7 +268,7 @@ function InviteCard({ invite: i, me, name, canAct, onAct, onPropose }: {
         <Badge tone={tone}>{label}</Badge>
       </div>
       <p className="mt-2 flex items-center gap-1.5 text-[15px] font-semibold"><MapPin className="size-4 text-accent" />{i.gym_name}</p>
-      {inviteTimeLines(starts, i.time_zone, browserZone()).map((l, n) => <p key={n} className={n === 0 ? "mt-1 text-[14px]" : "text-[12.5px] text-muted-foreground"}>{l}</p>)}
+      <Local>{() => inviteTimeLines(starts, i.time_zone, browserZone()).map((l, n) => <p key={n} className={n === 0 ? "mt-1 text-[14px]" : "text-[12.5px] text-muted-foreground"}>{l}</p>)}</Local>
       {i.workout_name && <p className="mt-1 text-[13px] text-muted-foreground">Workout: {i.workout_name}</p>}
       {i.note && <p className="mt-1 whitespace-pre-wrap text-[13px]">{i.note}</p>}
       {i.status === "pending" && i.proposed_by !== i.from_id && <p className="mt-1 text-[12.5px] text-muted-foreground">New time proposed by {i.proposed_by === me ? "you" : name}.</p>}

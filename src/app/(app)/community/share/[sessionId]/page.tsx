@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { ShareWorkout } from "@/components/community/share-workout";
-import { PageHeader } from "@/components/ui/misc";
+import { CommunityHeader } from "@/components/community/header";
 import { getProfile } from "@/lib/data/queries";
 import { getMyGym } from "@/lib/data/social";
 import { distanceUnit } from "@/lib/data/types";
@@ -19,7 +19,8 @@ export default async function SharePage({ params }: { params: Promise<{ sessionI
   ]);
   return (
     <>
-      <PageHeader title="Share workout" subtitle="Check exactly what will be posted. Your workout stays private; this creates a separate copy." />
+      <CommunityHeader title="Share workout" back={{ href: "/community/share", label: "Back" }} showNav={false} />
+      <p className="-mt-2 mb-5 text-[14px] text-muted-foreground">Your workout stays private. Sharing posts a separate copy, exactly as previewed.</p>
       <ShareWorkout sessionId={sessionId} gym={mine.gym} unit={profile.unit} distUnit={distanceUnit(profile)} sharedTo={existing.map((e) => e.audience)} />
     </>
   );

@@ -25,7 +25,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[13px]">
-        {audiences.length > 0 && <span className="text-muted-foreground">Shared with {audiences.join(" and ")}. Edits here don&apos;t change the post.</span>}
+        {audiences.length > 0 && <span className="text-muted-foreground">Shared with {audiences.join(" and ")}</span>}
         <Link href={`/community/share/${id}`} className="inline-flex h-10 items-center gap-1.5 rounded-md px-2 font-semibold text-accent hover:bg-muted"><Share2 className="size-4" /> Share</Link>
       </div>
       {editor}

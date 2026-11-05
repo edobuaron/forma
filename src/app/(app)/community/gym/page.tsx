@@ -1,5 +1,5 @@
 import { GymSettings } from "@/components/community/gym-settings";
-import { PageHeader } from "@/components/ui/misc";
+import { CommunityHeader } from "@/components/community/header";
 import { getMyGym } from "@/lib/data/social";
 import { requireUser } from "@/lib/supabase/server";
 
@@ -10,7 +10,7 @@ export default async function GymPage() {
   const { membership, gym } = await getMyGym(supabase);
   return (
     <>
-      <PageHeader title="My gym" subtitle="Optional. You can skip this, change it or leave at any time." />
+      <CommunityHeader title="My gym" back={{ href: "/community?tab=gym", label: "Back to Community" }} showNav={false} />
       <GymSettings gym={gym} membership={membership} />
     </>
   );

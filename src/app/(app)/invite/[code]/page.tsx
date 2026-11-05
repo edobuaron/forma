@@ -1,5 +1,5 @@
 import { AcceptInvite } from "@/components/community/accept-invite";
-import { PageHeader } from "@/components/ui/misc";
+import { CommunityHeader } from "@/components/community/header";
 import { invitePreview } from "@/lib/data/social";
 import { requireUser } from "@/lib/supabase/server";
 
@@ -11,7 +11,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   const preview = /^[a-f0-9]{32}$/.test(code) ? await invitePreview(supabase, code) : { status: "invalid" as const };
   return (
     <>
-      <PageHeader title="Friend invite" />
+      <CommunityHeader title="Friend invite" back={{ href: "/community", label: "Back to Community" }} showNav={false} />
       <AcceptInvite code={code} preview={preview} />
     </>
   );

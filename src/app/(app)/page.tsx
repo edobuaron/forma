@@ -161,7 +161,7 @@ export default async function Dashboard() {
           </CardHeader>
           <CardContent>
             {d.recs.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Suggestions appear after you&apos;ve logged an exercise once. Nothing is guessed before then.</p>
+              <p className="text-[13px] text-muted-foreground">Suggestions appear after you&apos;ve logged an exercise once.</p>
             ) : (
               <ul className="divide-y">
                 {d.recs.map((r) => (
@@ -225,7 +225,7 @@ export default async function Dashboard() {
             ) : d.enoughData ? (
               <p className="text-[14px] text-muted-foreground">Performance has remained consistent. No adjustment needed.</p>
             ) : (
-              <p className="text-[13px] text-muted-foreground">Insights need a few weeks of history. Nothing is inferred from too little data.</p>
+              <p className="text-[13px] text-muted-foreground">Insights need a few weeks of history.</p>
             )}
           </CardContent>
         </Card>

@@ -42,7 +42,7 @@ export function ShareWorkout({ sessionId, gym, unit, distUnit, sharedTo }: { ses
     setBusy(true);
     try {
       const r = await shareWorkout(createClient(), { id, sessionId, audience, include, caption: caption.trim() });
-      if (r === "shared") { toast.success(audience === "gym" ? "Shared with your gym community" : "Shared with friends"); router.push(audience === "gym" ? "/community/club" : "/community/feed?tab=mine"); router.refresh(); }
+      if (r === "shared") { toast.success(audience === "gym" ? "Shared with your gym community" : "Shared with friends"); router.push(audience === "gym" ? "/community?tab=gym" : "/community/me"); router.refresh(); }
       else toast.error(postOutcome(r));
     } catch { toast.error("Not posted. Check your connection and try again."); } finally { setBusy(false); }
   }

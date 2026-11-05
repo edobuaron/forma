@@ -1,27 +1,26 @@
-import { CommunityHome } from "@/components/community/community-home";
-import { PageHeader } from "@/components/ui/misc";
-import { getMyGym, gymCounts, gymPeople, myBlocked, myFriends, myRequests, mySocialStatus } from "@/lib/data/social";
+import { FeedScreen } from "@/components/community/screens";
 import { unreadTotal } from "@/lib/data/messages";
+import { feed } from "@/lib/data/posts";
+import { getProfile } from "@/lib/data/queries";
+import { getMyGym, myFriends, myRequests, mySocialStatus } from "@/lib/data/social";
+import { distanceUnit } from "@/lib/data/types";
 import { requireUser } from "@/lib/supabase/server";
 
 export const metadata = { title: "Community" };
 
-export default async function CommunityPage() {
-  const { supabase } = await requireUser();
-  const { membership, gym } = await getMyGym(supabase);
-  const [counts, people, friends, requests, blocked, status, unread] = await Promise.all([
-    gym ? gymCounts(supabase, gym.id) : Promise.resolve(null),
-    gym ? gymPeople(supabase, gym.id) : Promise.resolve([]),
-    myFriends(supabase),
-    myRequests(supabase),
-    myBlocked(supabase),
-    mySocialStatus(supabase),
-    unreadTotal(supabase),
+export default async function CommunityPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const tab = (await searchParams).tab === "gym" ? "gym" : "friends";
+  const { supabase, user } = await requireUser();
+  const { gym, membership } = await getMyGym(supabase);
+  const [posts, buddies, friends, requests, status, unread, profile] = await Promise.all([
+    tab === "gym" ? (gym ? feed(supabase, "gym") : Promise.resolve([])) : feed(supabase, "friends"),
+    tab === "gym" && gym ? feed(supabase, "buddy") : Promise.resolve([]),
+    myFriends(supabase), myRequests(supabase), mySocialStatus(supabase), unreadTotal(supabase), getProfile(supabase),
   ]);
   return (
-    <>
-      <PageHeader title="Community" subtitle="Friends and your gym. Nothing from your workouts is shared unless you choose to." />
-      <CommunityHome data={{ gym, membership, counts, people, friends, requests, blocked, restricted: status.restricted, unread }} />
-    </>
+    <FeedScreen tab={tab} me={user.id} unit={profile.unit} distUnit={distanceUnit(profile)} unread={unread} restricted={status.restricted}
+      friends={friends} incoming={requests.filter((r) => r.direction === "incoming")}
+      posts={tab === "gym" ? posts.filter((p) => p.kind === "workout") : posts}
+      gym={gym} membership={membership} buddies={buddies} />
   );
 }

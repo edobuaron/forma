@@ -1,6 +1,5 @@
 "use client";
-import { ArrowLeft, MapPin, Plus, Search } from "lucide-react";
-import Link from "next/link";
+import { MapPin, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -36,7 +35,7 @@ export function GymSettings({ gym, membership }: { gym: Gym | null; membership: 
   async function choose(g: Gym) {
     if (gym && membership?.discoverable && gym.id !== g.id && !confirm("Switching gym turns discovery off. You can turn it on again for the new gym.")) return;
     setBusy(true);
-    try { await setMyGym(createClient(), g.id); toast.success(`Your gym: ${g.name}`); router.push("/community"); router.refresh(); }
+    try { await setMyGym(createClient(), g.id); toast.success(`Your gym: ${g.name}`); router.push("/community?tab=gym"); router.refresh(); }
     catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -52,14 +51,12 @@ export function GymSettings({ gym, membership }: { gym: Gym | null; membership: 
       const r = await addGym(createClient(), { ...draft, country: draft.country.toUpperCase() });
       await setMyGym(createClient(), r.id);
       toast.success(r.created ? "Gym added" : "That gym already existed, so we used it");
-      router.push("/community"); router.refresh();
+      router.push("/community?tab=gym"); router.refresh();
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
   }
 
   return (
     <div className="max-w-2xl space-y-6">
-      <Link href="/community" className="inline-flex h-10 items-center gap-1.5 text-[14px] font-medium text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Community</Link>
-
       {gym && (
         <Panel className="p-4">
           <div className="flex items-start gap-3">
@@ -161,9 +158,6 @@ export function GymSettings({ gym, membership }: { gym: Gym | null; membership: 
         </section>
       )}
 
-      {!gym && !adding && (
-        <p className="text-[13px] text-muted-foreground">Prefer not to? <Link href="/community" className="font-semibold text-foreground underline-offset-2 hover:underline">Skip for now</Link>. You can still add friends with an invite link.</p>
-      )}
     </div>
   );
 }
