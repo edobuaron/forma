@@ -73,3 +73,13 @@ export async function respondTrainingInvite(db: DB, id: string, action: "accept"
     p_id: id, p_action: action, p_version: version, p_starts_at: next?.startsAt.toISOString() ?? null, p_time_zone: next?.timeZone ?? null,
   })) as string;
 }
+
+export type UpcomingSession = {
+  id: string; conversation_id: string; other_id: string; display_name: string; gym_name: string; starts_at: string;
+  time_zone: string; workout_name: string | null; status: "accepted" | "pending"; awaiting_me: boolean; version: number;
+};
+/** Accepted sessions (and invitations waiting for the caller's answer) in the coming weeks. */
+export async function upcomingSessions(db: DB): Promise<UpcomingSession[]> {
+  const r = await db.rpc("my_upcoming_sessions");
+  return r.error ? [] : ((r.data ?? []) as UpcomingSession[]);
+}

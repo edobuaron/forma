@@ -14,7 +14,7 @@ import {
   type ConversationInfo, type Message, type TrainingInvite,
 } from "@/lib/data/messages";
 import { blockUser } from "@/lib/data/social";
-import { browserZone, inviteError, inviteStatusLabel, inviteTimeLines, isValidZone, messageError, wallParts, zonedToUtc } from "@/lib/domain/schedule";
+import { browserZone, formatInZone, inviteError, inviteStatusLabel, inviteTimeLines, isValidZone, messageError, wallParts, zonedToUtc } from "@/lib/domain/schedule";
 import type { Gym } from "@/lib/domain/social";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -50,11 +50,18 @@ function gap(a: Message, b: Message) {
   return (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) / 1000;
 }
 
+/** An invitation that's still open and upcoming; while one exists the composer doesn't repeat the action. */
+function openInviteFor(invites: Record<string, TrainingInvite>, _me: string): boolean {
+  return Object.values(invites).some((i) => (i.status === "pending" || i.status === "accepted") && new Date(i.starts_at).getTime() > Date.now());
+}
+
 const EVENT_COPY: Record<string, string> = { accepted: "accepted the invitation", declined: "declined the invitation", proposed: "proposed a different time", cancelled: "cancelled the invitation" };
 
-export function Conversation({ conversationId, me, info, initialMessages, initialInvites, myGym, workoutNames, live = true }: {
+export function Conversation({ conversationId, me, info, initialMessages, initialInvites, myGym, workoutNames, live = true, openInvite = false }: {
   conversationId: string; me: string; info: ConversationInfo; initialMessages: Message[]; initialInvites: TrainingInvite[];
   myGym: Gym | null; workoutNames: string[];
+  /** Open the invitation form right away (from a profile's "Invite to train"). */
+  openInvite?: boolean;
   /** False only for fixture previews: no realtime, polling or read receipts. */
   live?: boolean;
 }) {
@@ -64,7 +71,7 @@ export function Conversation({ conversationId, me, info, initialMessages, initia
   const [text, setText] = useState("");
   const [muted, setMutedState] = useState(info.muted);
   const [reporting, setReporting] = useState<ReportSubject | null>(null);
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(openInvite && info.can_send === "ok");
   const [infoOpen, setInfoOpen] = useState(false);
   const [proposeFor, setProposeFor] = useState<TrainingInvite | null>(null);
   const bottom = useRef<HTMLLIElement>(null);
@@ -162,7 +169,7 @@ export function Conversation({ conversationId, me, info, initialMessages, initia
           <li className="flex flex-col items-center py-12 text-center">
             <Avatar name={name} id={info.other_id} className="size-20 text-[26px]" />
             <p className="mt-3 text-[17px] font-semibold">{name}</p>
-            <p className="mt-1 text-[14px] text-muted-foreground">Say hi, or invite {name.split(" ")[0]} to train.</p>
+            <p className="mt-1 text-[14px] text-muted-foreground">Say hi, or plan a session together.</p>
           </li>
         )}
         {mounted && messages.map((m, idx) => {
@@ -212,12 +219,20 @@ export function Conversation({ conversationId, me, info, initialMessages, initia
       </ol>
 
       {canSend ? (
-        <form className="flex items-end gap-2 border-t pt-3" onSubmit={(e) => { e.preventDefault(); send(); }}>
+        <div className="border-t pt-2.5">
+        {!openInviteFor(invites, me) && (
+          <button type="button" onClick={() => setInviteOpen(true)}
+            className="mb-2.5 inline-flex h-9 items-center gap-1.5 rounded-full border bg-card px-3.5 text-[13.5px] font-semibold transition-colors hover:bg-muted active:scale-[0.97]">
+            <CalendarClock className="size-4 text-accent" /> Invite to train
+          </button>
+        )}
+        <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); send(); }}>
           <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} maxLength={2000} placeholder={`Message ${name}`} aria-label="Message"
             className="max-h-32 min-h-11 flex-1 resize-none rounded-[22px] px-4 py-2.5"
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} />
           <Button type="submit" variant="primary" size="icon" className="size-11 shrink-0 rounded-full" aria-label="Send" disabled={!text.trim()}><Send className="size-5" /></Button>
         </form>
+        </div>
       ) : (
         <p className="border-t pt-3 text-center text-[13px] text-muted-foreground">{CAN_SEND_COPY[info.can_send] ?? CAN_SEND_COPY.unavailable}</p>
       )}
@@ -297,16 +312,24 @@ function zoneList(): string[] {
 
 function WhenFields({ date, time, zone, set }: { date: string; time: string; zone: string; set: (p: { date?: string; time?: string; zone?: string }) => void }) {
   const zones = useMemo(zoneList, []);
+  const [editZone, setEditZone] = useState(false);
+  const at = isValidZone(zone) ? zonedToUtc(date, time, zone) : null;
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date"><Input type="date" value={date} onChange={(e) => set({ date: e.target.value })} /></Field>
         <Field label="Time"><Input type="time" value={time} onChange={(e) => set({ time: e.target.value })} /></Field>
       </div>
-      <Field label="Time zone" hint="Both of you see the time in this zone, plus your own if it differs.">
-        <Input list="tz-list" value={zone} onChange={(e) => set({ zone: e.target.value })} />
-        <datalist id="tz-list">{zones.map((z) => <option key={z} value={z} />)}</datalist>
-      </Field>
+      {editZone ? (
+        <Field label="Time zone" hint="Both of you see the time in this zone, plus your own if it differs.">
+          <Input list="tz-list" value={zone} onChange={(e) => set({ zone: e.target.value })} />
+          <datalist id="tz-list">{zones.map((z) => <option key={z} value={z} />)}</datalist>
+        </Field>
+      ) : null}
+      <p className="text-[12.5px] text-muted-foreground" aria-live="polite">
+        {at ? <span className="font-medium text-foreground">{formatInZone(at, zone)}</span> : "Pick a date and time that exists in this time zone."}
+        {!editZone && <> · <button type="button" className="font-semibold text-foreground underline-offset-2 hover:underline" onClick={() => setEditZone(true)}>Change time zone</button></>}
+      </p>
     </>
   );
 }
@@ -334,9 +357,12 @@ function InviteSheet({ open, onOpenChange, to, name, myGym, workoutNames, onSent
   }
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent title="Invite to train" description={`Only you and ${name} see this invitation. It doesn't create a workout.`}>
+      <SheetContent title="Invite to train" description={`Only you and ${name} see this. It doesn't create or log a workout.`}>
         <div className="space-y-3">
-          <Field label="Gym"><Input value={f.gym} maxLength={120} onChange={(e) => setF({ ...f, gym: e.target.value })} placeholder="Where you'll train" /></Field>
+          <Field label="Gym">
+            <Input list="gym-list" value={f.gym} maxLength={120} onChange={(e) => setF({ ...f, gym: e.target.value })} placeholder="Where you'll train" />
+            {myGym && <datalist id="gym-list"><option value={myGym.name} /></datalist>}
+          </Field>
           <WhenFields date={f.date} time={f.time} zone={f.zone} set={(p) => setF({ ...f, ...p })} />
           <Field label="Workout (optional)">
             <Input list="workout-list" value={f.workout} maxLength={80} onChange={(e) => setF({ ...f, workout: e.target.value })} placeholder="e.g. Push" />

@@ -44,3 +44,25 @@ describe("social helpers", () => {
     expect(requestSucceeded("unavailable")).toBe(false);
   });
 });
+
+import { avatarFileProblem, centreSquare, validateProfile } from "../social";
+
+describe("profiles", () => {
+  it("validates name, bio and interests", () => {
+    expect(validateProfile({ displayName: "Ada", bio: "", interests: ["strength"] })).toBeNull();
+    expect(validateProfile({ displayName: " ", bio: "", interests: [] })).toMatch(/display name/);
+    expect(validateProfile({ displayName: "Ada", bio: "x".repeat(161), interests: [] })).toMatch(/bio/);
+    expect(validateProfile({ displayName: "Ada", bio: "", interests: ["napping"] })).toMatch(/list/);
+    expect(validateProfile({ displayName: "Ada", bio: "", interests: ["strength", "running", "mobility", "sport", "calisthenics", "powerlifting"] })).toMatch(/up to 5/);
+  });
+  it("accepts photos only, up to 10 MB", () => {
+    expect(avatarFileProblem("image/jpeg", 2_000_000)).toBeNull();
+    expect(avatarFileProblem("image/svg+xml", 2000)).toMatch(/JPEG/);
+    expect(avatarFileProblem("image/png", 11 * 1024 * 1024)).toMatch(/10 MB/);
+    expect(avatarFileProblem("image/png", 0)).toMatch(/empty/);
+  });
+  it("crops the centre square", () => {
+    expect(centreSquare(400, 300)).toEqual({ sx: 50, sy: 0, side: 300 });
+    expect(centreSquare(300, 500)).toEqual({ sx: 0, sy: 100, side: 300 });
+  });
+});

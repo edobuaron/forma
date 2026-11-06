@@ -144,11 +144,12 @@ select pg_temp.as_user('b1000000-0000-0000-0000-00000000000b');
 do $$ begin
   assert public.remove_friend('a1000000-0000-0000-0000-00000000000a') = 'removed', 'unfriend';
   assert public.send_message(gen_random_uuid(), 'a1000000-0000-0000-0000-00000000000a', 'still there?')->>'status' = 'not_friends', 'no messages after unfriend';
-  assert public.respond_training_invite('22222222-0000-0000-0000-000000000001', 'accept', 4) = 'not_friends', 'no accept after unfriend';
+  -- Since migration 022, unfriending cancels open invitations for both people.
+  assert (select status from public.training_invites where id = '22222222-0000-0000-0000-000000000001') = 'cancelled', 'unfriend cancels the invitation';
+  assert public.respond_training_invite('22222222-0000-0000-0000-000000000001', 'accept', 5) = 'not_friends', 'no accept after unfriend';
   assert (select count(*) from public.messages) > 0, 'history readable after unfriend';
   assert (select can_send from public.my_conversations()) = 'not_friends', 'list shows why';
-  -- cancel still allowed
-  assert public.respond_training_invite('22222222-0000-0000-0000-000000000001', 'cancel', 4) = 'cancelled', 'cancel after unfriend';
+  assert public.respond_training_invite('22222222-0000-0000-0000-000000000001', 'cancel', 5) = 'closed', 'already closed';
 end $$;
 reset role;
 insert into public.friendships (user_a, user_b) values ('a1000000-0000-0000-0000-00000000000a', 'b1000000-0000-0000-0000-00000000000b');

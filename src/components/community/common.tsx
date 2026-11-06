@@ -1,7 +1,7 @@
 "use client";
 import { Ban, Flag, MoreHorizontal, UserMinus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
@@ -32,13 +32,32 @@ export function avatarHue(key: string): number {
   return Math.floor(((h * 0.6180339887) % 1) * 360);
 }
 
-/** Initials avatar from the chosen display name. No photos, no other personal data. */
-export function Avatar({ name, id, className }: { name: string; id?: string; className?: string }) {
+/** Avatars load photos through /api/avatar unless turned off (fixture previews have no account). */
+const AvatarPhotos = createContext(true);
+export function AvatarPhotosProvider({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
+  return <AvatarPhotos.Provider value={enabled}>{children}</AvatarPhotos.Provider>;
+}
+
+/**
+ * The person's photo when they set one and the viewer may see it, otherwise initials from the chosen
+ * display name. `photo`: a version string when known, null when known to have none, undefined to try.
+ * `src` overrides the source (a local preview while editing).
+ */
+export function Avatar({ name, id, className, photo, src }: { name: string; id?: string; className?: string; photo?: string | null; src?: string | null }) {
   const hue = avatarHue(id ?? name);
+  const live = useContext(AvatarPhotos);
+  const [loaded, setLoaded] = useState<string | null>(null);
+  const url = src ?? (live && id && photo !== null ? `/api/avatar/${id}${photo ? `?v=${photo}` : ""}` : null);
   return (
-    <span aria-hidden className={cn("grid size-10 shrink-0 place-items-center rounded-full text-[14px] font-bold tracking-tight text-white", className)}
+    <span aria-hidden className={cn("relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full text-[14px] font-bold tracking-tight text-white", className)}
       style={{ background: `linear-gradient(140deg, oklch(0.66 0.15 ${hue}), oklch(0.5 0.17 ${(hue + 40) % 360}))` }}>
       {initials(name)}
+      {url && (
+        // eslint-disable-next-line @next/next/no-img-element -- private, per-viewer image served by our own route
+        <img src={url} alt="" loading="lazy" decoding="async" draggable={false}
+          onLoad={() => setLoaded(url)} onError={() => setLoaded(null)}
+          className={cn("absolute inset-0 size-full object-cover transition-opacity duration-200", loaded === url ? "opacity-100" : "opacity-0")} />
+      )}
     </span>
   );
 }
@@ -46,10 +65,10 @@ export function Avatar({ name, id, className }: { name: string; id?: string; cla
 /** Quiet empty state: a short title, one line, and the actions that fix it. */
 export function Empty({ title, children, actions, className }: { title: string; children?: React.ReactNode; actions?: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("px-2 py-10 text-center", className)}>
-      <p className="text-[17px] font-semibold tracking-tight">{title}</p>
+    <div className={cn("px-2 py-8 text-center", className)}>
+      <p className="text-[16px] font-semibold tracking-tight">{title}</p>
       {children && <p className="mx-auto mt-1 max-w-xs text-[14px] text-muted-foreground">{children}</p>}
-      {actions && <div className="mt-5 flex flex-wrap justify-center gap-2">{actions}</div>}
+      {actions && <div className="mt-4 flex flex-wrap justify-center gap-2">{actions}</div>}
     </div>
   );
 }

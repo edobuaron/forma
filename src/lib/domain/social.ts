@@ -100,3 +100,62 @@ const REPORT_COPY: Record<string, string> = {
 export function reportMessage(status: string): string {
   return REPORT_COPY[status] ?? "Something went wrong. Please try again.";
 }
+
+/* ---------- profiles ---------- */
+
+/** Fixed list, so interests can't carry free text. Same values as the database check. */
+export const INTERESTS = [
+  { value: "strength", label: "Strength" },
+  { value: "hypertrophy", label: "Muscle building" },
+  { value: "powerlifting", label: "Powerlifting" },
+  { value: "olympic_lifting", label: "Olympic lifting" },
+  { value: "calisthenics", label: "Calisthenics" },
+  { value: "bodybuilding", label: "Bodybuilding" },
+  { value: "running", label: "Running" },
+  { value: "conditioning", label: "Conditioning" },
+  { value: "mobility", label: "Mobility" },
+  { value: "sport", label: "Sport" },
+] as const;
+export type Interest = (typeof INTERESTS)[number]["value"];
+export const MAX_INTERESTS = 5;
+export const MAX_BIO = 160;
+
+export function interestLabel(v: string): string {
+  return INTERESTS.find((i) => i.value === v)?.label ?? v;
+}
+
+export function validateProfile(p: { displayName: string; bio: string; interests: string[] }): string | null {
+  const name = p.displayName.trim();
+  if (name.length < 1 || name.length > 60) return "Enter a display name (up to 60 characters).";
+  if (p.bio.trim().length > MAX_BIO) return `Keep the bio under ${MAX_BIO} characters.`;
+  if (p.interests.length > MAX_INTERESTS) return `Pick up to ${MAX_INTERESTS} interests.`;
+  if (p.interests.some((i) => !INTERESTS.some((x) => x.value === i))) return "Pick interests from the list.";
+  return null;
+}
+
+/** Avatar uploads: photos only, re-encoded in the browser to a small square before upload. */
+export const AVATAR_INPUT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+export const AVATAR_MAX_INPUT_BYTES = 10 * 1024 * 1024;
+/** Same as the storage bucket's limit. */
+export const AVATAR_MAX_UPLOAD_BYTES = 512 * 1024;
+export const AVATAR_SIZE_PX = 384;
+
+export function avatarFileProblem(type: string, size: number): string | null {
+  if (!AVATAR_INPUT_TYPES.includes(type.toLowerCase())) return "Choose a JPEG, PNG, WebP or HEIC photo.";
+  if (size > AVATAR_MAX_INPUT_BYTES) return "That photo is over 10 MB. Choose a smaller one.";
+  if (size === 0) return "That file is empty.";
+  return null;
+}
+
+/** Square centre crop of a w×h image: the source rectangle to draw. */
+export function centreSquare(w: number, h: number): { sx: number; sy: number; side: number } {
+  const side = Math.min(w, h);
+  return { sx: Math.round((w - side) / 2), sy: Math.round((h - side) / 2), side };
+}
+
+export type SocialProfile = {
+  id: string; display_name: string; bio?: string; interests: string[]; avatar?: string;
+  relation: Relation | "self"; incoming_request_id?: string; outgoing_request_id?: string;
+  can_request: boolean; can_message: boolean;
+  gym?: { id: string; name: string; city: string; verified: boolean };
+};
