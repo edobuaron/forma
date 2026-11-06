@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { ChevronLeft, Cloud, CloudOff, Footprints, Gauge, Loader2, MoreHorizontal, Plus, Timer, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, Cloud, CloudOff, Footprints, Gauge, Loader2, MoreHorizontal, Plus, Timer, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -28,6 +28,7 @@ import {
   type SessionRunRow,
 } from "@/lib/data/types";
 import { runProblem } from "@/lib/domain/running";
+import { moveInOrder, repositioned, workoutOrder } from "@/lib/data/workout-order";
 import { createClient } from "@/lib/supabase/client";
 import { formatDuration, uuid } from "@/lib/utils";
 import { AttachmentPicker } from "./attachment-picker";
@@ -36,6 +37,7 @@ import { ExerciseCard } from "./exercise-card";
 import { ExercisePicker } from "./exercise-picker";
 import { RestTimer, type RestState } from "./rest-timer";
 import { RunCard, type RunPatch } from "./run-card";
+import { ReorderList, type ReorderEntry } from "./reorder-list";
 import { ShortfallReasonField } from "./shortfall-reason";
 import type { WExercise, WSet } from "./types";
 
@@ -87,15 +89,6 @@ function emptyRun(id: string, sessionId: string, position: number): SessionRunRo
   };
 }
 
-/** Exercises and runs in one workout order (they share positions). */
-type Entry = { kind: "exercise"; id: string; position: number } | { kind: "run"; id: string; position: number };
-function workoutOrder(items: { id: string; position: number }[], runs: { id: string; position: number }[]): Entry[] {
-  return [
-    ...items.map((i) => ({ kind: "exercise" as const, id: i.id, position: i.position })),
-    ...runs.map((r) => ({ kind: "run" as const, id: r.id, position: r.position })),
-  ].sort((a, b) => a.position - b.position || (a.kind === b.kind ? 0 : a.kind === "exercise" ? -1 : 1));
-}
-
 /** Re-apply writes that were queued locally but never reached the server (crash / closed tab). */
 function applyPending(items: WExercise[], ops: SyncOp[], library: ExerciseRow[]): WExercise[] {
   let out = items.map((i) => ({ ...i, sets: [...i.sets] }));
@@ -145,6 +138,12 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
   // Latest items for callbacks that outlive a render (the Undo action of a toast).
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const runsRef = useRef(runs);
+  runsRef.current = runs;
+  // Reorder mode: null when off, else the entry to focus when it opens.
+  const [reorder, setReorder] = useState<{ focusId: string | null } | null>(null);
+  const lastMovedRef = useRef<string | null>(null);
+  const openingReorderRef = useRef(false);
   const [history, setHistory] = useState<Record<string, ExercisePerformance[]>>(initialHistory);
   const [notes, setNotes] = useState(initialSession.notes ?? "");
   const [shortfallReason, setShortfallReason] = useState<ShortfallReason | null>(null);
@@ -470,20 +469,50 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
     enqueueItem(next);
   }
 
-  /** Move an exercise or a run one place in the workout. Exercises and runs share one order. */
+  /**
+   * Move an exercise or a run one place in the workout. Exercises and runs share one order.
+   * Only positions change, for this session only (the program's order is untouched). Reads and
+   * updates the refs so taps faster than a render each build on the previous move; the autosave
+   * queue keeps one pending write per row and writes in sequence, so the newest order wins.
+   */
   function onMove(id: string, dir: -1 | 1) {
-    const order = workoutOrder(items, runs);
-    const index = order.findIndex((e) => e.id === id);
-    const j = index + dir;
-    if (index < 0 || j < 0 || j >= order.length) return;
-    [order[index], order[j]] = [order[j], order[index]];
-    const pos = new Map(order.map((e, k) => [e.id, k]));
-    const nextItems = items.map((it) => ({ ...it, position: pos.get(it.id)! }));
-    const nextRuns = runs.map((r) => ({ ...r, position: pos.get(r.id)! }));
-    setItems(nextItems.sort((a, b) => a.position - b.position));
-    setRuns(nextRuns.sort((a, b) => a.position - b.position));
-    nextItems.forEach((it) => { if (items.find((o) => o.id === it.id)?.position !== it.position) enqueueItem(it); });
-    nextRuns.forEach((r) => { if (runs.find((o) => o.id === r.id)?.position !== r.position) enqueueRun(r); });
+    const curItems = itemsRef.current, curRuns = runsRef.current;
+    const pos = moveInOrder(workoutOrder(curItems, curRuns), id, dir);
+    if (!pos) return;
+    const movedItems = repositioned(curItems, pos);
+    const movedRuns = repositioned(curRuns, pos);
+    const nextItems = curItems.map((it) => movedItems.find((m) => m.id === it.id) ?? it).sort((a, b) => a.position - b.position);
+    const nextRuns = curRuns.map((r) => movedRuns.find((m) => m.id === r.id) ?? r).sort((a, b) => a.position - b.position);
+    itemsRef.current = nextItems;
+    runsRef.current = nextRuns;
+    lastMovedRef.current = id;
+    setItems(nextItems);
+    setRuns(nextRuns);
+    movedItems.forEach(enqueueItem);
+    movedRuns.forEach(enqueueRun);
+  }
+
+  function reorderEntries(): ReorderEntry[] {
+    return workoutOrder(items, runs).map((e) => {
+      if (e.kind === "run") {
+        const r = runs.find((x) => x.id === e.id)!;
+        return { id: r.id, kind: "run", name: r.name, detail: r.completed ? "Run · done" : "Run" };
+      }
+      const it = items.find((x) => x.id === e.id)!;
+      const working = it.sets.filter((x) => x.kind === "working");
+      const done = working.filter((x) => x.completed).length;
+      const detail = working.length === 0 ? "No sets yet" : done > 0 ? `${done}/${working.length} sets done` : `${working.length} set${working.length === 1 ? "" : "s"}`;
+      return { id: it.id, kind: "exercise", name: it.exercise.name, detail };
+    });
+  }
+
+  function closeReorder() {
+    const id = lastMovedRef.current ?? reorder?.focusId ?? null;
+    setReorder(null);
+    lastMovedRef.current = null;
+    void queueRef.current?.flush();
+    // Back in the workout, bring the last moved entry (or the one the mode was opened from) into view.
+    if (id) requestAnimationFrame(() => (document.getElementById(`ex-${id}`) ?? document.getElementById(`run-${id}`))?.scrollIntoView({ block: "start" }));
   }
 
   // ---------- runs ----------
@@ -742,9 +771,11 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
             <MenuTrigger aria-label="Workout options" className="grid size-10 place-items-center rounded-full text-muted-foreground outline-none hover:bg-muted">
               <MoreHorizontal className="size-5" />
             </MenuTrigger>
-            <MenuContent>
+            {/* Opening reorder mode moves focus into it; don't let the menu pull focus back to its trigger. */}
+            <MenuContent onCloseAutoFocus={(e) => { if (openingReorderRef.current) { openingReorderRef.current = false; e.preventDefault(); } }}>
               <MenuItem onSelect={() => setPicker({ mode: "add" })}><Plus /> Add exercise</MenuItem>
               <MenuItem onSelect={onAddRun}><Footprints /> Add run</MenuItem>
+              <MenuItem disabled={items.length + runs.length < 2} onSelect={() => { openingReorderRef.current = true; setReorder({ focusId: null }); }}><ArrowUpDown /> Reorder exercises</MenuItem>
               <MenuItem onSelect={() => setEditingEnergy(true)}>
                 <Gauge /> {energy == null ? "Add starting energy" : <>Starting energy <span className="ml-auto pl-3 text-muted-foreground tabular">{energy}/10</span></>}
               </MenuItem>
@@ -771,6 +802,9 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
             <span className="font-semibold text-foreground">Warm-up</span> · {warmupNotes}
           </p>
         )}
+        {reorder ? (
+          <ReorderList entries={reorderEntries()} focusId={reorder.focusId} onMove={onMove} onDone={closeReorder} />
+        ) : (<>
         {workoutOrder(items, runs).map((entry, idx, order) => {
           if (entry.kind === "run") {
             const run = runs.find((r) => r.id === entry.id)!;
@@ -779,7 +813,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
                 <RunCard run={run} unit={distUnit} live isFirst={idx === 0} isLast={idx === order.length - 1}
                   active={!activeSetId && runs.find((r) => !r.completed)?.id === run.id}
                   onChange={(patch) => onRunChange(run.id, patch)} onComplete={() => onCompleteRun(run.id)}
-                  onMove={(d) => onMove(run.id, d)} onRemove={() => onRemoveRun(run.id)} />
+                  onReorder={() => setReorder({ focusId: run.id })} onRemove={() => onRemoveRun(run.id)} />
               </div>
             );
           }
@@ -810,7 +844,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
                 onRemoveSet={(id) => onRemoveSet(item, id)}
                 onToggleKind={(id) => onToggleKind(item, id)}
                 onNotes={(v) => onNotes(item, v)}
-                onMove={(d) => onMove(item.id, d)}
+                onReorder={() => setReorder({ focusId: item.id })}
                 onRemove={() => onRemove(item)}
                 onReplace={() => setPicker({ mode: "replace", itemId: item.id })}
                 onDismissRecommendation={() => onDismiss(item)}
@@ -827,6 +861,7 @@ export function ActiveWorkout({ initialSession, initialHistory, library, attachm
             <Footprints /> Add run
           </Button>
         </div>
+        </>)}
 
         <div className="pt-4">
           <label className="mb-1.5 block px-1 text-[15px] font-semibold tracking-tight" htmlFor="session-notes">Workout notes</label>

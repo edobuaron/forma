@@ -120,3 +120,56 @@ describe("SyncQueue local persistence", () => {
     expect(storage.data.has("k")).toBe(false);
   });
 });
+
+describe("SyncQueue under rapid reordering", () => {
+  // A client whose first write hangs until released, recording every row it is sent.
+  function slowDb() {
+    const sent: Record<string, unknown>[][] = [];
+    let release: () => void = () => {};
+    let first = true;
+    const db = {
+      from: () => ({
+        upsert: (rows: Record<string, unknown>[]) => {
+          sent.push(rows);
+          if (!first) return Promise.resolve({ error: null });
+          first = false;
+          return new Promise((res) => { release = () => res({ error: null }); });
+        },
+        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        delete: () => ({ in: () => Promise.resolve({ error: null }) }),
+      }),
+    } as unknown as SupabaseClient;
+    return { db, sent, release: () => release() };
+  }
+  const move = (id: string, position: number) => ({ table: "session_exercises" as const, id, kind: "upsert" as const, row: { position } });
+
+  it("merges taps made before a write into one write of the latest position", async () => {
+    vi.stubGlobal("localStorage", fakeStorage());
+    const { db, sent, release } = slowDb();
+    const q = new SyncQueue(db, "k");
+    q.enqueue(move("a", 2));
+    q.enqueue(move("a", 1));
+    q.enqueue(move("a", 0));
+    await vi.advanceTimersByTimeAsync(400);
+    release();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sent).toEqual([[{ id: "a", position: 0 }]]);
+  });
+
+  it("a move made while an older write is in flight is written after it, so the newest order wins", async () => {
+    const storage = fakeStorage();
+    vi.stubGlobal("localStorage", storage);
+    const { db, sent, release } = slowDb();
+    const q = new SyncQueue(db, "k");
+    q.enqueue(move("a", 1));
+    await vi.advanceTimersByTimeAsync(400); // write of position 1 starts and hangs
+    q.enqueue(move("a", 0)); // newer tap during the write
+    await vi.advanceTimersByTimeAsync(400); // a second flush must not start while one is running
+    expect(sent).toHaveLength(1);
+    release();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sent.map((rows) => rows[0].position)).toEqual([1, 0]);
+    expect(q.pending).toBe(0);
+    expect(storage.data.has("k")).toBe(false);
+  });
+});

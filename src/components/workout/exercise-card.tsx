@@ -1,6 +1,6 @@
 "use client";
 import {
-  ArrowDown, ArrowUp, Check, ChevronDown, Copy, CornerDownRight, Flame, History, Info, Link2, MoreHorizontal, NotebookPen, Plus, Repeat, Trash2, X,
+  ArrowUpDown, Check, ChevronDown, Copy, CornerDownRight, Flame, History, Info, Link2, MoreHorizontal, NotebookPen, Plus, Repeat, Trash2, X,
 } from "lucide-react";
 import { useId, useState } from "react";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
@@ -52,7 +52,8 @@ interface Props {
   onRemoveSet: (setId: string) => void;
   onToggleKind: (setId: string) => void;
   onNotes: (notes: string) => void;
-  onMove: (dir: -1 | 1) => void;
+  /** Open reorder mode, focused on this exercise. */
+  onReorder: () => void;
   onRemove: () => void;
   onReplace: () => void;
   onDismissRecommendation: () => void;
@@ -183,8 +184,7 @@ export function ExerciseCard(p: Props) {
             <MenuItem onSelect={p.onPickAttachment}><Link2 /> Attachment…</MenuItem>
             <MenuSeparator />
             <MenuItem onSelect={p.onReplace}><Repeat /> Replace exercise</MenuItem>
-            <MenuItem disabled={p.isFirst} onSelect={() => p.onMove(-1)}><ArrowUp /> Move up</MenuItem>
-            <MenuItem disabled={p.isLast} onSelect={() => p.onMove(1)}><ArrowDown /> Move down</MenuItem>
+            <MenuItem disabled={p.isFirst && p.isLast} onSelect={p.onReorder}><ArrowUpDown /> Reorder exercises</MenuItem>
             <MenuSeparator />
             <MenuItem destructive onSelect={p.onRemove}><Trash2 /> Remove exercise</MenuItem>
           </MenuContent>
