@@ -203,6 +203,38 @@ export interface PrescribedJson {
   target_weight_kg?: number | null;
   per_side?: boolean;
   superset_group?: string | null;
+  /**
+   * Set on a replacement made with "Swap exercise" (no migration: it lives in this JSON snapshot).
+   * The `substituted_for` column holds the original exercise id; this keeps what History and undo need.
+   */
+  swap?: SwapInfo | null;
+  /** Set on the original when it kept logged work and the rest of its planned sets moved to a replacement. */
+  swapped_to?: SwappedTo | null;
+}
+
+export interface SwapInfo {
+  from_exercise_id: string;
+  from_name: string;
+  /** Today only, or the program's slot was changed too (future sessions). */
+  scope: "today" | "program";
+  /** The original row, when it stayed in the workout with its logged work; null for an in-place swap. */
+  from_item: string | null;
+  /** In-place swaps: the original's prescription and logging mode, restored by undo. */
+  from_prescribed?: PrescribedJson | null;
+  from_substituted_for?: string | null;
+  from_mode?: { track_sides: boolean; attachment_state: AttachmentState; attachment_id: string | null } | null;
+  /** Program swaps: the slot as it was, restored by undo. */
+  program?: { template_exercise_id: string; before: { exercise_id: string; sets: number; rep_min: number; rep_max: number; rest_s: number; target_weight_kg: number | null } } | null;
+  at: string;
+}
+
+export interface SwappedTo {
+  item: string;
+  exercise_id: string;
+  name: string;
+  /** Planned working sets the replacement took over. */
+  sets_moved: number;
+  at: string;
 }
 
 export interface SessionExerciseRow {

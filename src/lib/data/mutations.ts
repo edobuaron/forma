@@ -309,6 +309,47 @@ export async function deleteTemplateExercise(db: DB, id: string) {
   ok(await db.from("template_exercises").delete().eq("id", id));
 }
 
+/** The parts of a planned exercise a swap changes, so an undo can put them back. */
+export interface TemplateSlot {
+  exercise_id: string;
+  sets: number;
+  rep_min: number;
+  rep_max: number;
+  rest_s: number;
+  target_weight_kg: number | null;
+}
+
+/**
+ * Swap the exercise in a program's planned slot from the next session on. The plan's load is cleared:
+ * a load for one exercise is never assumed to suit another. Past workouts keep their own snapshot, so
+ * history is untouched. Snapshots the program as a new version. Returns the slot as it was before.
+ */
+export async function swapTemplateExercise(
+  db: DB, templateExerciseId: string, next: Omit<TemplateSlot, "target_weight_kg">, note: string,
+): Promise<{ before: TemplateSlot; programId: string | null }> {
+  const cur = ok(await db.from("template_exercises")
+    .select("exercise_id, sets, rep_min, rep_max, rest_s, target_weight_kg, template:workout_templates(program_id)")
+    .eq("id", templateExerciseId).single()) as TemplateSlot & { template: { program_id: string } | { program_id: string }[] | null };
+  const t = Array.isArray(cur.template) ? cur.template[0] : cur.template;
+  ok(await db.from("template_exercises").update({ ...next, target_weight_kg: null }).eq("id", templateExerciseId));
+  if (t?.program_id) await snapshotProgram(db, t.program_id, note);
+  const before: TemplateSlot = {
+    exercise_id: cur.exercise_id, sets: cur.sets, rep_min: cur.rep_min, rep_max: cur.rep_max, rest_s: cur.rest_s,
+    target_weight_kg: cur.target_weight_kg == null ? null : Number(cur.target_weight_kg),
+  };
+  return { before, programId: t?.program_id ?? null };
+}
+
+/** Undo a program swap, only if the slot still holds the replacement (a later edit wins). */
+export async function restoreTemplateExercise(db: DB, templateExerciseId: string, before: TemplateSlot, expectedExerciseId: string, note: string): Promise<boolean> {
+  const res = ok(await db.from("template_exercises").update(before).eq("id", templateExerciseId).eq("exercise_id", expectedExerciseId)
+    .select("id, template:workout_templates(program_id)")) as { id: string; template: { program_id: string } | { program_id: string }[] | null }[];
+  if (res.length === 0) return false;
+  const t = Array.isArray(res[0].template) ? res[0].template[0] : res[0].template;
+  if (t?.program_id) await snapshotProgram(db, t.program_id, note);
+  return true;
+}
+
 // ---------- body ----------
 export async function upsertMeasurement(db: DB, row: Record<string, unknown>) {
   ok(await db.from("body_measurements").upsert(row, { onConflict: "user_id,measured_on" }));

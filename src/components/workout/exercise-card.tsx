@@ -1,6 +1,6 @@
 "use client";
 import {
-  ArrowUpDown, Check, ChevronDown, Copy, CornerDownRight, Flame, History, Info, Link2, MoreHorizontal, NotebookPen, Plus, Repeat, Trash2, X,
+  ArrowUpDown, Check, ChevronDown, Copy, CornerDownRight, Flame, History, Info, Link2, ListOrdered, MoreHorizontal, NotebookPen, Plus, Repeat, Trash2, Undo2, X,
 } from "lucide-react";
 import { useId, useState } from "react";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/dropdown";
@@ -15,7 +15,8 @@ import {
 } from "@/lib/domain/sides";
 import type { ExerciseConfig, ExercisePerformance, LoggedSet, Side, WeightUnit } from "@/lib/domain/types";
 import { displayToKg, kgToDisplay } from "@/lib/domain/units";
-import { canToggleKind, dropSegmentsOf, plannedSets } from "@/lib/data/set-rows";
+import { canToggleKind, dropSegmentsOf, plannedForProgress } from "@/lib/data/set-rows";
+import { planCopy, type SetValues } from "@/lib/domain/previous-copy";
 import { toAttachmentRef, toLoggedSet } from "@/lib/data/types";
 import { cn, formatDuration } from "@/lib/utils";
 import { ExerciseIcon } from "@/components/ui/category";
@@ -39,6 +40,12 @@ interface Props {
   isLast: boolean;
   /** The next set to do in the whole workout. */
   activeSetId: string | null;
+  /** "Previously exercise 2; today exercise 5." Context only, never an adjustment. */
+  orderNote: string | null;
+  /** Copy the matched previous values into a set (one side when given). Never completes it. */
+  onCopyPrevious: (setId: string, side: Side | null, values: SetValues) => void;
+  onSwap: () => void;
+  onUndoSwap: () => void;
   onSetChange: (setId: string, patch: Partial<WSet>) => void;
   onCompleteSet: (setId: string) => void;
   onSideChange: (setId: string, side: Side, patch: SidePatch) => void;
@@ -55,7 +62,6 @@ interface Props {
   /** Open reorder mode, focused on this exercise. */
   onReorder: () => void;
   onRemove: () => void;
-  onReplace: () => void;
   onDismissRecommendation: () => void;
 }
 
@@ -115,7 +121,7 @@ export function ExerciseCard(p: Props) {
 
   const logged = item.sets.map(toLoggedSet);
   const done = doneWorkingSets(logged);
-  const total = plannedSets(rx, item.sets);
+  const total = plannedForProgress(rx, item.sets);
   const complete = total > 0 && done >= total;
   const warmups = item.sets.filter((x) => x.kind === "warmup").length;
   const drops = item.sets.filter((x) => x.kind === "drop").length;
@@ -183,7 +189,8 @@ export function ExerciseCard(p: Props) {
             )}
             <MenuItem onSelect={p.onPickAttachment}><Link2 /> Attachment…</MenuItem>
             <MenuSeparator />
-            <MenuItem onSelect={p.onReplace}><Repeat /> Replace exercise</MenuItem>
+            <MenuItem onSelect={p.onSwap}><Repeat /> Swap exercise</MenuItem>
+            {rx.swap && <MenuItem disabled={item.sets.some((x) => setPerformed(toLoggedSet(x)))} onSelect={p.onUndoSwap}><Undo2 /> Undo swap</MenuItem>}
             <MenuItem disabled={p.isFirst && p.isLast} onSelect={p.onReorder}><ArrowUpDown /> Reorder exercises</MenuItem>
             <MenuSeparator />
             <MenuItem destructive onSelect={p.onRemove}><Trash2 /> Remove exercise</MenuItem>
@@ -195,6 +202,7 @@ export function ExerciseCard(p: Props) {
         <div id={ids.body}>
           {/* Previous performance + recommendation */}
           <div className="space-y-2 px-4 md:px-5">
+            <SwapNote item={item} onUndo={p.onUndoSwap} />
             {showAttachment && (
               <div className="-my-1.5 flex flex-wrap items-center gap-x-2">
                 <AttachmentChip value={attachment} onClick={p.onPickAttachment} />
@@ -214,10 +222,13 @@ export function ExerciseCard(p: Props) {
                 {latestMode && latestMode !== "mixed" && (latestMode === "sides") !== item.track_sides && (
                   <span className="text-foreground/80"> · {latestMode === "sides" ? "logged per side" : "logged together"}, not compared</span>
                 )}
-                {item.substituted_for && <span> · substituted</span>}
               </button>
             ) : (
               <p className="text-[13px] text-muted-foreground">First time logging this exercise. Pick a load you could lift for about {Math.max(rx.rep_min ?? 1, (rx.rep_max ?? 10) - 2)} reps with 2 in reserve.</p>
+            )}
+
+            {p.orderNote && (
+              <p className="-mt-1 flex items-center gap-1.5 text-[12.5px] text-muted-foreground"><ListOrdered aria-hidden className="size-3.5 shrink-0" /> {p.orderNote}</p>
             )}
 
             {/* first_time with a history means nothing comparable (other attachment or mode): say what to do. */}
@@ -348,7 +359,8 @@ export function ExerciseCard(p: Props) {
                         key={side} side={side} set={s} setName={setName} plain={isWarm || isDrop} showRir={showRir} setGrid={setGrid}
                         ex={ex} unit={unit} rx={rx}
                         prev={isWarm || isDrop || !prevSide[side] ? NO_COUNTERPART : counterpart(prevSide[side]!.sets, pi, ex)}
-                        rec={p.recommendation?.sides?.[side] ?? null} index={pi}
+                        rec={p.recommendation?.sides?.[side] ?? null} index={pi} showCopy={!removing}
+                        onCopy={(values) => p.onCopyPrevious(s.id, side, values)}
                         reportFieldError={reportFieldError} fieldErrors={fieldErrors}
                         onChange={(patch) => p.onSideChange(s.id, side, patch)}
                         onComplete={() => p.onCompleteSide(s.id, side)}
@@ -396,7 +408,11 @@ export function ExerciseCard(p: Props) {
                   ) : isWarm ? (
                     <p className="col-[2/-1] row-start-2 hidden text-[12.5px] text-muted-foreground @md:col-[2/3] @md:row-start-1 @md:block">Warm-up · not counted</p>
                   ) : (
-                    <PreviousCell prevText={prevSet ? formatSetShort(prevSet, ex.loadType, unit) : null} cmpText={cmpText} />
+                    <PreviousCell
+                      prev={prevSet} extra={pair.extra} ex={ex} unit={unit} cmpText={cmpText}
+                      copy={!s.completed && !removing && prevSet ? copyAction(prevSet, { load: assisted ? s.assistance_kg : s.weight_kg, reps: s.reps, rir: s.rir }, showRir, ex, (v) => p.onCopyPrevious(s.id, null, v)) : null}
+                      setName={setName}
+                    />
                   )}
                   <NumberField
                     ariaLabel={`${setName} ${loadName}`}
@@ -459,6 +475,11 @@ export function ExerciseCard(p: Props) {
                 <NotebookPen className="size-4" /> Note
               </button>
             )}
+            {!removing && (
+              <button onClick={p.onSwap} className={footerButton} aria-label={`Swap ${ex.name} for another exercise`}>
+                <Repeat className="size-4" /> Swap
+              </button>
+            )}
             {(item.exercise.instructions || item.exercise.notes) && (
               <button
                 aria-expanded={showTech}
@@ -513,23 +534,89 @@ function CompleteButton({ done, label, onClick }: { done: boolean; label: string
   );
 }
 
-/** Previous set and comparison: beside the inputs on wide cards, underneath on phones. */
-function PreviousCell({ prevText, cmpText, prefix = "Previous" }: { prevText: string | null; cmpText: ReturnType<typeof comparisonText>; prefix?: string }) {
+/** Values of a previous set as they would be copied. Bodyweight sets without added load copy as 0. */
+function previousValues(prev: LoggedSet, ex: ExerciseConfig, withRir: boolean): SetValues {
+  const bodyLoad = ex.loadType === "bodyweight" || ex.loadType === "weighted_bodyweight";
+  const load = ex.loadType === "assisted" ? prev.assistanceKg : prev.weightKg ?? (bodyLoad ? 0 : null);
+  return { load, reps: prev.reps, rir: withRir ? prev.rir ?? null : null };
+}
+
+/** The copy action for a set, or null when there is nothing to copy (already the same values). */
+function copyAction(prev: LoggedSet, current: SetValues, withRir: boolean, ex: ExerciseConfig, onCopy: (v: SetValues) => void): (() => void) | null {
+  const values = previousValues(prev, ex, withRir);
+  return planCopy(current, values, { includeRir: withRir }).same ? null : () => onCopy(values);
+}
+
+/**
+ * Previous set and comparison: beside the inputs on wide cards, underneath on phones. A set beyond
+ * last time's sets is labelled "Extra set"; a position with no history stays empty (never filled in
+ * from another set).
+ */
+function PreviousCell({ prev, extra, ex, unit, cmpText, copy, setName, prefix = "Previous" }: {
+  prev: LoggedSet | null; extra: boolean; ex: ExerciseConfig; unit: WeightUnit; cmpText: ReturnType<typeof comparisonText>;
+  copy: (() => void) | null; setName: string; prefix?: string;
+}) {
+  const prevText = prev ? `${formatSetShort(prev, ex.loadType, unit)}${prev.rir != null ? ` · RIR ${prev.rir}` : ""}` : null;
+  // The extra label replaces the comparison's own "Extra set" text instead of repeating it.
+  const cmp = extra && cmpText?.text.startsWith("Extra set") ? null : cmpText;
   return (
     <div
       className={cn(
-        "col-[2/-1] row-start-2 flex min-w-0 flex-wrap items-baseline gap-x-2 pb-0.5 leading-tight @md:col-[2/3] @md:row-start-1 @md:block @md:pb-0",
-        !prevText && !cmpText && "hidden @md:block",
+        "col-[2/-1] row-start-2 flex min-w-0 items-center gap-x-2 pb-0.5 leading-tight @md:col-[2/3] @md:row-start-1 @md:pb-0",
+        !prevText && !cmp && !extra && "hidden @md:flex",
       )}
     >
-      <p className="truncate text-[13px] text-muted-foreground tabular">
-        <span className="@md:hidden">{prefix} </span>
-        {prevText ?? "—"}
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 @md:block">
+        {extra && !prev ? (
+          <p className="truncate text-[12.5px] font-medium text-muted-foreground">Extra set<span className="@md:hidden"> · no previous set to compare</span></p>
+        ) : (
+          <p className="truncate text-[13px] text-muted-foreground tabular">
+            <span className="@md:hidden">{prefix} </span>
+            {prevText ?? "—"}
+          </p>
+        )}
+        {cmp && (
+          <p className={cn("text-[11px] font-medium leading-tight @md:line-clamp-2", cmp.tone === "positive" && "text-positive", cmp.tone === "negative" && "text-negative", cmp.tone === "neutral" && "text-muted-foreground")}>
+            {cmp.text}
+          </p>
+        )}
+      </div>
+      {copy && (
+        <button
+          onClick={copy}
+          aria-label={`${setName}: copy last time's values (${prevText})`}
+          title="Copy last time's values"
+          className={cn(
+            "relative flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold text-accent hover:bg-muted after:absolute after:-inset-1.5 after:content-['']",
+            "@md:size-8 @md:justify-center @md:px-0",
+            focusRing,
+          )}
+        >
+          <Copy aria-hidden className="size-3.5" /><span className="@md:sr-only">Copy</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Where a swapped exercise came from or went, with undo while the replacement has no logged work. */
+function SwapNote({ item, onUndo }: { item: WExercise; onUndo: () => void }) {
+  const swap = item.prescribed.swap;
+  const to = item.prescribed.swapped_to;
+  if (!swap && !to) return null;
+  const canUndo = !!swap && !item.sets.some((x) => setPerformed(toLoggedSet(x)));
+  return (
+    <div className="-mt-1 flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 text-[12.5px] leading-snug text-muted-foreground">
+      <Repeat aria-hidden className="size-3.5 shrink-0" />
+      <p className="min-w-0 flex-1">
+        {swap
+          ? <>Swapped in for <span className="font-medium text-foreground">{swap.from_name}</span> · {swap.scope === "program" ? "program updated" : "today only"}</>
+          : <>Swapped to <span className="font-medium text-foreground">{to!.name}</span> for the remaining {to!.sets_moved} set{to!.sets_moved === 1 ? "" : "s"}. Logged sets stay here.</>}
       </p>
-      {cmpText && (
-        <p className={cn("text-[11px] font-medium leading-tight @md:line-clamp-2", cmpText.tone === "positive" && "text-positive", cmpText.tone === "negative" && "text-negative", cmpText.tone === "neutral" && "text-muted-foreground")}>
-          {cmpText.text}
-        </p>
+      {canUndo && (
+        <button onClick={onUndo} className={cn("-my-1 -mr-1.5 flex h-9 shrink-0 items-center gap-1 rounded-md px-2 font-semibold text-accent hover:bg-card", focusRing)}>
+          <Undo2 aria-hidden className="size-3.5" /> Undo
+        </button>
       )}
     </div>
   );
@@ -538,9 +625,10 @@ function PreviousCell({ prevText, cmpText, prefix = "Previous" }: { prevText: st
 const NO_COUNTERPART: Counterpart = { previous: null, extra: false };
 
 /** One side of a left/right set: its own load, reps, RIR and completion, compared with the same side last time. */
-function SideRow({ side, set: s, setName, plain, showRir, setGrid, ex, unit, rx, prev: pair, rec, index, reportFieldError, fieldErrors, onChange, onComplete }: {
+function SideRow({ side, set: s, setName, plain, showRir, setGrid, ex, unit, rx, prev: pair, rec, index, showCopy, onCopy, reportFieldError, fieldErrors, onChange, onComplete }: {
   side: Side; set: WSet; setName: string; plain: boolean; showRir: boolean; setGrid: string;
   ex: ExerciseConfig; unit: WeightUnit; rx: WExercise["prescribed"]; prev: Counterpart; rec: Recommendation | null; index: number;
+  showCopy: boolean; onCopy: (values: SetValues) => void;
   reportFieldError: (key: string, m: string | null) => void; fieldErrors: Record<string, string>;
   onChange: (patch: SidePatch) => void; onComplete: () => void;
 }) {
@@ -565,7 +653,14 @@ function SideRow({ side, set: s, setName, plain, showRir, setGrid, ex, unit, rx,
       )}>
         <span aria-hidden>{sideShort[side]}</span><span className="sr-only">{sideLabel[side]}</span>
       </span>
-      <PreviousCell prefix={`${sideLabel[side]} last time`} prevText={prev ? formatSetShort(prev, ex.loadType, unit) : null} cmpText={cmp} />
+      {plain ? (
+        <p className="col-[2/-1] row-start-2 hidden text-[12.5px] text-muted-foreground @md:col-[2/3] @md:row-start-1 @md:block">{s.kind === "drop" ? "Drop · not compared" : "Warm-up · not counted"}</p>
+      ) : (
+        <PreviousCell
+          prefix={`${sideLabel[side]} last time`} prev={prev} extra={pair.extra} ex={ex} unit={unit} cmpText={cmp} setName={name}
+          copy={showCopy && !done && prev ? copyAction(prev, { load: assisted ? v.assistanceKg : v.weightKg, reps: v.reps, rir: v.rir }, showRir, ex, onCopy) : null}
+        />
+      )}
       <NumberField
         ariaLabel={`${name} ${assisted ? "assistance" : "load"}`}
         onErrorChange={(m) => reportFieldError(`${key}:load`, m)}

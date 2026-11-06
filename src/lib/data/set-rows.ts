@@ -188,6 +188,18 @@ export function plannedSets(prescribed: PrescribedJson, sets: Pick<SetRow, "kind
 }
 
 /**
+ * Planned sets that still belong to this exercise in the workout's progress. When the remaining
+ * planned sets moved to a replacement ("Swap exercise" after logging work), only the sets kept here
+ * count, so the plan isn't counted twice. The prescription itself is unchanged, so the exercise is
+ * still recorded as short of its plan for progression and shortened-workout rules.
+ */
+export function plannedForProgress(prescribed: PrescribedJson, sets: SetRow[]): number {
+  const planned = plannedSets(prescribed, sets);
+  if (!prescribed.swapped_to) return planned;
+  return Math.min(planned, sets.filter((s) => s.kind === "working").length);
+}
+
+/**
  * What removing this set means. An extra set beyond the plan is simply gone. Removing a planned set
  * leaves the plan unchanged: the set counts as not performed (never as done) when the workout ends.
  */

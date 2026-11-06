@@ -257,6 +257,20 @@ export async function recentHistory(db: DB, exerciseIds: string[], sessions = 6,
   return { rows, byExercise: groupHistory(rows) };
 }
 
+/**
+ * The order exercises were done in, per session: exercise ids by position, runs left out. Used to
+ * say "previously exercise 2; today exercise 5" next to a comparison. Context only, never a judgement.
+ */
+export async function sessionExerciseOrder(db: DB, sessionIds: string[]): Promise<Record<string, string[]>> {
+  if (sessionIds.length === 0) return {};
+  const rows = check(
+    await db.from("session_exercises").select("session_id, exercise_id, position").in("session_id", sessionIds),
+  ) as { session_id: string; exercise_id: string; position: number }[];
+  const out: Record<string, string[]> = {};
+  for (const r of [...rows].sort((a, b) => a.position - b.position)) (out[r.session_id] ??= []).push(r.exercise_id);
+  return out;
+}
+
 /** All completed sets, optionally since a date and/or for specific exercises. */
 export async function completedSetHistory(db: DB, opts: { since?: string | null; exerciseIds?: string[] } = {}): Promise<SetHistoryRow[]> {
   return fetchAll<SetHistoryRow>((from, to) => {
