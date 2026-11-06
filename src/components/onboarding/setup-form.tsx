@@ -32,7 +32,7 @@ export function SetupForm({ initialName, initialUnit, hasStarter }: { initialNam
     <div className="space-y-7">
       <div>
         <h1 className="text-[32px] font-bold leading-tight tracking-[-0.035em]">Welcome to Forma</h1>
-        <p className="mt-1.5 text-[15px] text-muted-foreground">Two quick, optional questions. You can change both later in Settings.</p>
+        <p className="mt-1.5 text-[15px] text-muted-foreground">Both optional. You can change them later in Settings.</p>
       </div>
 
       <div className="space-y-4">
@@ -63,7 +63,6 @@ export function SetupForm({ initialName, initialUnit, hasStarter }: { initialNam
           {busy === "continue" && <Loader2 className="animate-spin" />} Continue
         </Button>
       </div>
-      <p className="text-[12.5px] text-muted-foreground">Body measurements aren&apos;t needed. Add them under Body whenever you like.</p>
     </div>
   );
 }

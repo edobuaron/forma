@@ -1,6 +1,6 @@
 "use client";
 import {
-  Activity, BarChart3, CalendarDays, ChevronRight, Dumbbell, Home, LayoutList, MoreHorizontal, Ruler, Settings, Timer,
+  Activity, BarChart3, CalendarDays, ChevronRight, Dumbbell, Home, LayoutList, MoreHorizontal, Ruler, Settings, Timer, Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -11,21 +11,26 @@ const NAV = [
   { href: "/workout", label: "Workout", icon: Timer },
   { href: "/history", label: "History", icon: CalendarDays },
   { href: "/analytics", label: "Progress", icon: BarChart3 },
+  { href: "/community", label: "Community", icon: Users },
   { href: "/exercises", label: "Exercises", icon: Dumbbell },
   { href: "/programs", label: "Programs", icon: LayoutList },
   { href: "/body", label: "Body", icon: Ruler },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
-const MOBILE = [NAV[0], NAV[1], NAV[2], NAV[3], { href: "/more", label: "More", icon: MoreHorizontal }];
+// Mobile keeps five tabs: Progress moves under More so Community fits without a cramped sixth item.
+const MOBILE = [NAV[0], NAV[1], NAV[2], NAV[4], { href: "/more", label: "More", icon: MoreHorizontal }];
 
-function active(path: string, href: string) {
+function active(path: string, href: string, mobile = false) {
   if (href === "/") return path === "/";
-  if (href === "/more") return ["/more", "/exercises", "/programs", "/body", "/settings"].some((p) => path.startsWith(p));
+  if (href === "/community") return path.startsWith("/community") || path.startsWith("/invite");
+  if (href === "/analytics" && mobile) return false;
+  if (href === "/more") return ["/more", "/exercises", "/programs", "/body", "/settings", "/analytics"].some((p) => path.startsWith(p));
   return path === href || path.startsWith(href + "/");
 }
 
-export function Shell({ children, inProgress }: { children: React.ReactNode; inProgress: { id: string; name: string } | null }) {
-  const path = usePathname();
+export function Shell({ children, inProgress, pathOverride }: { children: React.ReactNode; inProgress: { id: string; name: string } | null; pathOverride?: string }) {
+  const actualPath = usePathname();
+  const path = pathOverride ?? actualPath;
   const inWorkout = /^\/workout\/[^/]+$/.test(path);
 
   return (
@@ -49,7 +54,7 @@ export function Shell({ children, inProgress }: { children: React.ReactNode; inP
                 className={cn(
                   "group relative flex h-10 items-center gap-3 rounded-md px-3 text-[14px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                   on && "bg-accent-soft font-semibold text-foreground hover:bg-accent-soft",
-                  i === 4 && "mt-5",
+                  i === 5 && "mt-5",
                 )}
               >
                 {on && <span aria-hidden className="absolute inset-y-2 -left-3 w-[3px] rounded-r-full bg-accent" />}
@@ -91,7 +96,7 @@ export function Shell({ children, inProgress }: { children: React.ReactNode; inP
         <nav aria-label="Main" className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t bg-sidebar/90 backdrop-blur-xl md:hidden">
           <div className="mx-auto grid h-[64px] max-w-md grid-cols-5">
             {MOBILE.map((n) => {
-              const on = active(path, n.href);
+              const on = active(path, n.href, true);
               return (
                 <Link
                   key={n.href}

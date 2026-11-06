@@ -10,7 +10,7 @@ export default async function BodyPage() {
   const [profile, rows] = await Promise.all([getProfile(supabase), listMeasurements(supabase)]);
   return (
     <>
-      <PageHeader title="Body" subtitle="Optional. Track bodyweight and measurements over time." />
+      <PageHeader title="Body" />
       <BodyTracker rows={rows} unit={profile.unit} profileId={profile.id} />
     </>
   );

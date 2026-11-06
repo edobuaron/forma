@@ -18,7 +18,7 @@ export default async function ProgramsPage() {
   const full = await Promise.all(programs.map((p) => getProgram(supabase, p.id)));
   return (
     <>
-      <PageHeader title="Programs" subtitle="Templates define what you plan to do. Workouts record what you did."
+      <PageHeader title="Programs"
         actions={<div className="flex gap-2"><Button asChild variant="outline" size="sm"><Link href="/programs/import"><FileUp /> Import plan</Link></Button><NewProgramButton /></div>} />
       {programs.length === 0 && (
         <EmptyState icon={<LayoutList />} title="No programs yet" action={<div className="flex flex-wrap justify-center gap-2"><NewProgramButton /><AddStarterButton /></div>}>

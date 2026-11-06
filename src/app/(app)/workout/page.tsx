@@ -14,7 +14,7 @@ export default async function StartPage() {
 
   return (
     <>
-      <PageHeader title="Start workout" subtitle="Pick what you're training today" />
+      <PageHeader title="Start workout" />
       <StartWorkout templates={toStartTemplates(program?.templates ?? [], recent)} />
     </>
   );

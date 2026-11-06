@@ -146,3 +146,9 @@ Before deploying this update:
 - Apply `20261027000009_onboarding_and_catalog.sql` (if not yet applied), then `20261029000010_starter_program_for_new_accounts.sql`, then deploy the app. The new client calls RPCs from both.
 - Existing accounts are marked as already seeded and keep their programs, history, names and notes. The 22 originally seeded exercises are linked to their catalog entries, and assisted exercises get the explicit `assistance` weight entry (only the label changes).
 - If you turned off public sign-ups, invite the friend from Supabase Auth (Users → Invite) or turn sign-ups on temporarily.
+
+## Community screen previews
+
+`FORMA_FIXTURES=1 npm run dev`, then open `/dev/fixtures/feed` (also `gym`, `feed-empty`, `inbox`, `inbox-empty`,
+`conversation`, `profile`, `find`, `share`, …). The data is made up and never touches an account or the database.
+The route returns 404 unless that variable is set, and always in production builds.
