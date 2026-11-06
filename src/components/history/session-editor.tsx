@@ -1,6 +1,6 @@
 "use client";
 import { format } from "date-fns";
-import { Award, Check, ChevronLeft, Copy, CornerDownRight, Flame, Footprints, Loader2, Minus, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Award, Check, ChevronLeft, Copy, CornerDownRight, Flame, Footprints, Loader2, Minus, Pencil, Plus, Repeat, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/dropdown";
 import { Input, Textarea } from "@/components/ui/input";
 import { AttachmentChip, AttachmentPicker } from "@/components/workout/attachment-picker";
-import { formatSetLong, loadColumnLabel } from "@/components/workout/format";
+import { formatSetLong, loadColumnLabel, swapText } from "@/components/workout/format";
 import { ExercisePicker } from "@/components/workout/exercise-picker";
 import { NumberField } from "@/components/workout/number-field";
 import { EnergyScale } from "@/components/workout/energy-rating";
@@ -366,6 +366,9 @@ export function SessionEditor({ session, unit, distUnit = "km", library, records
             <div className="mb-2 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <Link href={`/exercises/${e.exercise_id}`} className="text-[16px] font-semibold tracking-tight hover:underline">{e.exercise.name}</Link>
+                {swapText(e, (id) => library.find((l) => l.id === id)?.name) && (
+                  <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-muted-foreground"><Repeat aria-hidden className="size-3.5 shrink-0" /> {swapText(e, (id) => library.find((l) => l.id === id)?.name)}</p>
+                )}
                 {!editing && plan && <p className="mt-0.5 text-[12.5px] text-muted-foreground tabular">Planned {plan}</p>}
               </div>
               {notPerformed && (
