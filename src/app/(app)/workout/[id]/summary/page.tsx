@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ComparisonSummaryLine, recordLabel, StreamComparisonList } from "@/components/workout/stream-comparison";
+import { swapText } from "@/components/workout/format";
 import { compareStreams, summariseComparison } from "@/lib/domain/comparison";
 import { headline, recommendFor } from "@/lib/domain/progression";
 import { attachmentLabel, compatibleHistory } from "@/lib/domain/sides";
@@ -147,6 +148,7 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
                   : <Badge>Mixed</Badge>
               ) : <Badge tone="outline">First session</Badge>}
             </div>
+            {swapText(r.e) && <p className="mb-1.5 text-[12.5px] text-muted-foreground">{swapText(r.e)}</p>}
             {r.attachment.state && <p className="mb-1.5 text-[12.5px] text-muted-foreground">Attachment: {attachmentLabel(r.attachment)}</p>}
             <StreamComparisonList items={r.streams} loadType={r.cfg.loadType} unit={unit} />
             <ComparisonSummaryLine summary={r.summary} unit={unit} />

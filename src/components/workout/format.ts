@@ -101,3 +101,24 @@ export function comparisonSummaryText(c: SessionComparisonSummary, unit: WeightU
     : null;
   return { sets, volume };
 }
+
+/**
+ * How History explains a swap: "Swapped in for Barbell bench press" on the replacement and
+ * "Swapped to Dumbbell press for the remaining 2 sets" on the original. Older substitutions (made
+ * before swaps recorded their details) fall back to the original's name when it is known.
+ */
+export function swapText(
+  e: { prescribed: { swap?: { from_name: string; scope: "today" | "program" } | null; swapped_to?: { name: string; sets_moved: number } | null } | null; substituted_for: string | null },
+  nameOf?: (exerciseId: string) => string | undefined,
+): string | null {
+  const swap = e.prescribed?.swap;
+  const to = e.prescribed?.swapped_to;
+  const parts: string[] = [];
+  if (swap) parts.push(`Swapped in for ${swap.from_name}${swap.scope === "program" ? " · program updated" : ""}`);
+  else if (e.substituted_for) {
+    const n = nameOf?.(e.substituted_for);
+    parts.push(n ? `Substituted for ${n}` : "Substitution");
+  }
+  if (to) parts.push(`Swapped to ${to.name} for the remaining ${to.sets_moved} set${to.sets_moved === 1 ? "" : "s"}`);
+  return parts.length ? parts.join(" · ") : null;
+}
