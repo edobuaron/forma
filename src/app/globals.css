@@ -36,6 +36,8 @@
   --negative: oklch(0.55 0.125 62);
   --negative-soft: oklch(0.75 0.14 72 / 0.18);
   --record: oklch(0.5 0.19 295);
+  --warning: oklch(0.55 0.13 62);
+  --warning-soft: oklch(0.75 0.15 75 / 0.14);
   --record-soft: oklch(0.55 0.19 295 / 0.1);
   --destructive: oklch(0.55 0.2 27);
   /* Workout state: completed work and pending / not yet done. Never the only signal: always paired with text or an icon. */
@@ -79,6 +81,8 @@
   --negative: oklch(0.82 0.135 78);
   --negative-soft: oklch(0.8 0.14 78 / 0.14);
   --record: oklch(0.76 0.13 295);
+  --warning: oklch(0.82 0.13 78);
+  --warning-soft: oklch(0.8 0.14 78 / 0.13);
   --record-soft: oklch(0.7 0.15 295 / 0.16);
   --destructive: oklch(0.7 0.18 25);
   --cat-push: oklch(0.75 0.15 2);
@@ -118,6 +122,8 @@
   --color-negative: var(--negative);
   --color-negative-soft: var(--negative-soft);
   --color-record: var(--record);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
   --color-record-soft: var(--record-soft);
   --color-destructive: var(--destructive);
   --color-done: var(--done);

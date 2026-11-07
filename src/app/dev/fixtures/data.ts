@@ -1,14 +1,17 @@
 // Disposable fixture data for previewing Community screens without an account or database.
 // Every person, gym and message here is made up. Only served when FORMA_FIXTURES=1 outside production.
-import type { ConversationInfo, ConversationSummary, Message, TrainingInvite } from "@/lib/data/messages";
-import type { FeedPost, WorkoutSnapshot } from "@/lib/data/posts";
+import type { ConversationInfo, ConversationSummary, Message, TrainingInvite, UpcomingSession } from "@/lib/data/messages";
+import type { Comment, FeedPost, WorkoutSnapshot } from "@/lib/data/posts";
 import type { Friend, FriendRequest, Membership, Person } from "@/lib/data/social";
 import { wallParts, zonedToUtc } from "@/lib/domain/schedule";
-import type { Gym } from "@/lib/domain/social";
+import type { Gym, SocialProfile } from "@/lib/domain/social";
+import type { PlanItem } from "@/lib/domain/shared-copy";
+import type { LibraryEntry } from "@/lib/plan-import/match";
 
 const NOW = Date.now();
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 const tomorrowAt = (time: string) => (zonedToUtc(wallParts(new Date(NOW + 86400000), "Europe/Rome").date, time, "Europe/Rome") as Date).toISOString();
+const inDaysAt = (days: number, time: string) => (zonedToUtc(wallParts(new Date(NOW + days * 86400000), "Europe/Rome").date, time, "Europe/Rome") as Date).toISOString();
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 export const ME = id(1);
@@ -38,8 +41,18 @@ export const GYM_PEOPLE: Person[] = [
 const inc = { loads: true, reps: true, duration: true, runs: true };
 const s = (kg: number, reps: number, n: number) => Array.from({ length: n }, () => ({ kg, reps }));
 
+// The plan the workout followed (prescriptions only). Triceps were added during the workout: no plan.
+const pushPlan: PlanItem[] = [
+  { name: "Barbell Bench Press", catalog_slug: "barbell-bench-press", equipment: "barbell", planned: true, sets: 3, rep_min: 6, rep_max: 8, rest_s: 180, warmup_sets: 2, target_rir: 2, target_weight_kg: 80, convention: "total" },
+  { name: "Incline Dumbbell Press", catalog_slug: "incline-db-press", equipment: "dumbbell", planned: true, sets: 3, rep_min: 8, rep_max: 10, rest_s: 120 },
+  { name: "Overhead press", equipment: "barbell", planned: true, sets: 3, rep_min: 6, rep_max: 8 },
+  { name: "Cable fly", equipment: "cable", planned: true, sets: 3, rep_min: 12, rep_max: 15, rest_s: 60, superset_group: "A", drop_segments: 1, drop_scope: "last_set" },
+  { name: "Lateral raise machine", equipment: "machine", planned: true, sets: 3, rep_min: 12, rep_max: 15, rest_s: 60, superset_group: "A" },
+  { name: "Triceps pushdown", equipment: "cable", planned: false },
+];
+
 const push: WorkoutSnapshot = {
-  name: "Push A", started_at: ago(100), duration_min: 64, include: inc, runs: [],
+  name: "Push A", started_at: ago(100), duration_min: 64, include: { ...inc, plan: true }, runs: [], plan: pushPlan,
   exercises: [
     { name: "Bench press", sets: [{ kg: 80, reps: 8 }, { kg: 80, reps: 7 }, { kg: 77.5, reps: 7 }] },
     { name: "Incline dumbbell press", convention: "per_dumbbell", sets: s(28, 10, 3) },
@@ -113,4 +126,62 @@ export const MESSAGES: Message[] = [
   msg(7, G, 6, "accepted", "invite_event"),
   msg(8, G, 5, "Yes! I'll bring chalk"),
   msg(9, G, 4, "Perfect, see you at 18:30 then 💪"),
+];
+
+export const COMMENTS: Record<string, Comment[]> = {
+  [id(301)]: [
+    { id: id(700), author_id: PEOPLE.marco.id, author_name: PEOPLE.marco.name, body: "That last set looked smooth. Same plan next week?", created_at: ago(30), can_delete: false },
+    { id: id(701), author_id: PEOPLE.giulia.id, author_name: PEOPLE.giulia.name, body: "@Marco yes, adding 2.5 kg if it moves like that again", created_at: ago(24), can_delete: false },
+    { id: id(702), author_id: ME, author_name: "Alex Demo", body: "Saving this one 👀", created_at: ago(10), can_delete: true },
+  ],
+};
+
+export const UPCOMING: UpcomingSession[] = [
+  { id: id(600), conversation_id: id(400), other_id: PEOPLE.giulia.id, display_name: PEOPLE.giulia.name, gym_name: GYM.name, starts_at: tomorrowAt("18:30"), time_zone: "Europe/Rome", workout_name: "Push A", status: "accepted", awaiting_me: false, version: 2 },
+  { id: id(601), conversation_id: id(401), other_id: PEOPLE.marco.id, display_name: PEOPLE.marco.name, gym_name: GYM.name, starts_at: inDaysAt(3, "07:15"), time_zone: "Europe/Rome", workout_name: null, status: "pending", awaiting_me: true, version: 1 },
+];
+
+const profile = (p: { id: string; name: string }, x: Partial<SocialProfile>): SocialProfile => ({
+  id: p.id, display_name: p.name, interests: [], relation: "none", can_request: false, can_message: false, ...x,
+});
+export const MY_PROFILE: SocialProfile = profile({ id: ME, name: "Alex Demo" }, {
+  relation: "self", bio: "Early-morning lifter. Learning to love front squats.", interests: ["strength", "hypertrophy", "running"],
+  gym: { id: GYM.id, name: GYM.name, city: GYM.city, verified: false },
+});
+export const NEW_PROFILE: SocialProfile = profile({ id: id(99), name: "New Member" }, { relation: "self" });
+export const GIULIA_PROFILE: SocialProfile = profile(PEOPLE.giulia, {
+  relation: "friends", can_message: true, bio: "Powerlifting meets in spring. Coffee before squats.", interests: ["powerlifting", "strength", "mobility"],
+  gym: { id: GYM.id, name: GYM.name, city: GYM.city, verified: false },
+});
+export const NOEMI_PROFILE: SocialProfile = profile(PEOPLE.noemi, { relation: "none", can_request: true, interests: ["calisthenics"], gym: { id: GYM.id, name: GYM.name, city: GYM.city, verified: false } });
+export const TOMMASO_PROFILE: SocialProfile = profile({ id: id(9), name: "Tommaso Villa" }, { relation: "request_sent", outgoing_request_id: id(201), bio: "Rowing and the occasional deadlift." });
+
+/** The recipient's own library, for the save-review preview. */
+export const MY_LIBRARY: LibraryEntry[] = [
+  { id: id(800), name: "Barbell Bench Press", aliases: ["bench press"], archived: false, catalogSlug: "barbell-bench-press" },
+  { id: id(801), name: "Overhead Press", aliases: ["ohp"], archived: false, catalogSlug: "overhead-press" },
+  { id: id(802), name: "Cable Crossover", aliases: [], archived: false, catalogSlug: null },
+  { id: id(803), name: "Triceps Rope Pushdown", aliases: [], archived: false, catalogSlug: null },
+];
+export const MY_PROGRAMS = [{ id: id(900), name: "Upper / Lower", is_active: true }, { id: id(901), name: "Summer block", is_active: false }];
+export const SAVE_POST = FRIEND_POSTS[0];
+
+export const PENDING_INVITE: TrainingInvite = {
+  id: id(601), conversation_id: id(401), from_id: PEOPLE.marco.id, to_id: ME, gym_id: GYM.id, gym_name: GYM.name, starts_at: inDaysAt(3, "07:15"), time_zone: "Europe/Rome",
+  workout_name: "Lower body", note: "Early one before work?", status: "pending", proposed_by: PEOPLE.marco.id, awaiting_id: ME, version: 1, updated_at: ago(60 * 3),
+};
+export const PROPOSED_INVITE: TrainingInvite = { ...PENDING_INVITE, id: id(602), starts_at: inDaysAt(3, "18:00"), status: "pending", proposed_by: ME, awaiting_id: PEOPLE.marco.id, version: 2, note: "Early one before work?" };
+const M = PEOPLE.marco.id;
+const msg2 = (n: number, from: string, min: number, body: string, kind: Message["kind"] = "text", invite?: string): Message =>
+  ({ id: id(550 + n), conversation_id: id(401), sender_id: from, kind, body, invite_id: invite ?? null, created_at: ago(min) });
+export const MARCO_INFO: ConversationInfo = { other_id: M, display_name: PEOPLE.marco.name, can_send: "ok", muted: false };
+export const MARCO_MESSAGES: Message[] = [
+  msg2(1, M, 60 * 3 + 2, "Leg day this week?"),
+  msg2(2, M, 60 * 3, "", "invite", PENDING_INVITE.id),
+];
+export const MARCO_MESSAGES_PROPOSED: Message[] = [
+  ...MARCO_MESSAGES.slice(0, 1),
+  msg2(3, M, 60 * 3, "", "invite", PROPOSED_INVITE.id),
+  msg2(4, ME, 8, "proposed", "invite_event", PROPOSED_INVITE.id),
+  msg2(5, ME, 7, "7:15 is too early for me, does 18:00 work?"),
 ];

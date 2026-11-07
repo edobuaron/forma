@@ -1,7 +1,7 @@
 // Community data access (migration 019+). Every call goes through RLS or a security-definer function
 // that checks the caller; nothing here can read another user's private records.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Gym, GymDraft, Relation, ReportReason } from "@/lib/domain/social";
+import type { Gym, GymDraft, Relation, ReportReason, SocialProfile } from "@/lib/domain/social";
 
 type DB = SupabaseClient;
 
@@ -120,4 +120,45 @@ export async function report(db: DB, t: { type: ReportTarget; id: string; user: 
   return ok(await db.rpc("report_content", {
     p_target_type: t.type, p_target_id: t.id, p_reported_user: t.user, p_reason: t.reason, p_details: t.details ?? null,
   })) as string;
+}
+
+/* ---------- profiles (migration 022) ---------- */
+
+/** The public-facing profile as the caller may see it; null when they can't see this person. */
+export async function socialProfile(db: DB, userId: string): Promise<SocialProfile | null> {
+  const p = ok(await db.rpc("social_profile", { p_user: userId })) as SocialProfile | null;
+  return p ? { ...p, interests: p.interests ?? [], can_request: !!p.can_request, can_message: !!p.can_message } : null;
+}
+
+export type MyProfileFields = { display_name: string | null; bio: string | null; training_interests: string[]; avatar_path: string | null };
+
+export async function myProfileFields(db: DB): Promise<MyProfileFields> {
+  const { data: u } = await db.auth.getUser();
+  return ok(await db.from("profiles").select("display_name, bio, training_interests, avatar_path").eq("id", u.user!.id).single()) as MyProfileFields;
+}
+
+export async function updateMyProfile(db: DB, p: { displayName: string; bio: string; interests: string[] }): Promise<void> {
+  const { data: u } = await db.auth.getUser();
+  ok(await db.from("profiles").update({
+    display_name: p.displayName.trim().slice(0, 60), bio: p.bio.trim() || null, training_interests: p.interests,
+  }).eq("id", u.user!.id));
+}
+
+/** Upload an already re-encoded avatar, point the profile at it, then remove the previous file. */
+export async function setMyAvatar(db: DB, blob: Blob, previous: string | null): Promise<string> {
+  const { data: u } = await db.auth.getUser();
+  const ext = blob.type === "image/webp" ? "webp" : blob.type === "image/png" ? "png" : "jpg";
+  const path = `${u.user!.id}/${crypto.randomUUID()}.${ext}`;
+  const up = await db.storage.from("avatars").upload(path, blob, { contentType: blob.type, upsert: false, cacheControl: "3600" });
+  if (up.error) throw new Error(up.error.message.includes("size") ? "That photo is too large." : "Couldn't upload the photo. Try again.");
+  const res = await db.from("profiles").update({ avatar_path: path }).eq("id", u.user!.id);
+  if (res.error) { await db.storage.from("avatars").remove([path]); throw new Error("Couldn't save the photo. Try again."); }
+  if (previous && previous !== path) await db.storage.from("avatars").remove([previous]);
+  return path;
+}
+
+export async function removeMyAvatar(db: DB, previous: string | null): Promise<void> {
+  const { data: u } = await db.auth.getUser();
+  ok(await db.from("profiles").update({ avatar_path: null }).eq("id", u.user!.id));
+  if (previous) await db.storage.from("avatars").remove([previous]);
 }

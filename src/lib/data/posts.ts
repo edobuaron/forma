@@ -2,6 +2,8 @@
 // workout records behind them; the server builds every snapshot.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { PlanItem } from "@/lib/domain/shared-copy";
+
 type DB = SupabaseClient;
 
 function ok<T>(res: { data: T | null; error: { message: string } | null }): T {
@@ -12,7 +14,7 @@ function ok<T>(res: { data: T | null; error: { message: string } | null }): T {
 export const REACTIONS = ["❤️", "💪", "🔥", "👏", "🏋️", "😮"] as const;
 export type Reaction = (typeof REACTIONS)[number];
 export type Audience = "friends" | "gym";
-export type ShareInclude = { loads: boolean; reps: boolean; duration: boolean; runs: boolean };
+export type ShareInclude = { loads: boolean; reps: boolean; duration: boolean; runs: boolean; plan?: boolean };
 
 export type SnapshotSet = { kg?: number; assist_kg?: number; reps?: number; left?: SnapshotSide; right?: SnapshotSide };
 export type SnapshotSide = { kg?: number; assist_kg?: number; reps?: number };
@@ -20,6 +22,8 @@ export type WorkoutSnapshot = {
   name: string; started_at: string; duration_min?: number;
   exercises: { name: string; convention?: string; sets: SnapshotSet[] }[];
   runs: { name: string; duration_s?: number; distance_m?: number }[];
+  /** The prescription the workout started from, only when the author chose to let friends save it. */
+  plan?: PlanItem[];
   include: ShareInclude;
 };
 
@@ -33,6 +37,32 @@ export type Comment = { id: string; author_id: string; author_name: string; body
 export async function feed(db: DB, scope: "friends" | "gym" | "buddy" | "mine", before?: string): Promise<FeedPost[]> {
   return ok(await db.rpc("community_feed", { p_scope: scope, p_limit: 30, p_before: before ?? null })) as FeedPost[];
 }
+/** Posts by one person that the caller may see (friends posts, and gym posts at the caller's gym). */
+export async function profilePosts(db: DB, authorId: string, before?: string): Promise<FeedPost[]> {
+  return ok(await db.rpc("profile_posts", { p_author: authorId, p_limit: 30, p_before: before ?? null })) as FeedPost[];
+}
+
+/** A post's snapshot can be saved when the author shared its plan. */
+export function isSaveable(p: Pick<FeedPost, "kind" | "snapshot">): boolean {
+  return p.kind === "workout" && !!p.snapshot?.include?.plan && Array.isArray(p.snapshot.plan) && p.snapshot.plan.length > 0;
+}
+
+export type SaveResult = { status: "saved" | "already_saved"; program_id: string; template_id: string } | { status: "error"; code: string };
+
+/** Atomic and idempotent by requestId: a retry returns the copy already made. */
+export async function saveSharedWorkout(db: DB, requestId: string, postId: string, payload: unknown): Promise<SaveResult> {
+  const r = await db.rpc("save_shared_workout", { p_id: requestId, p_post: postId, p_payload: payload });
+  if (r.error) return { status: "error", code: r.error.message };
+  const d = r.data as { status: string; program_id?: string; template_id?: string };
+  if (d.status === "saved" || d.status === "already_saved") return { status: d.status, program_id: d.program_id!, template_id: d.template_id! };
+  return { status: "error", code: d.status };
+}
+
+/** The caller's earlier saves of this post (their own records only). */
+export async function mySavesOf(db: DB, postId: string): Promise<{ id: string; program_id: string | null; template_id: string | null; created_at: string }[]> {
+  return ok(await db.from("workout_copies").select("id, program_id, template_id, created_at").eq("post_id", postId).not("template_id", "is", null).order("created_at", { ascending: false })) as { id: string; program_id: string | null; template_id: string | null; created_at: string }[];
+}
+
 export async function previewShare(db: DB, sessionId: string, include: ShareInclude): Promise<WorkoutSnapshot | null> {
   return ok(await db.rpc("preview_workout_share", { p_session: sessionId, p_include: include })) as WorkoutSnapshot | null;
 }

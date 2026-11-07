@@ -12,12 +12,13 @@ import type { Gym } from "@/lib/domain/social";
 import type { WeightUnit } from "@/lib/domain/types";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { PlanPreview } from "./plan-preview";
 import { SnapshotView } from "./post-card";
 
 export function ShareWorkout({ sessionId, gym, unit, distUnit, sharedTo }: { sessionId: string; gym: Gym | null; unit: WeightUnit; distUnit: DistanceUnit; sharedTo: Audience[] }) {
   const router = useRouter();
   const [audience, setAudience] = useState<Audience | null>(null);
-  const [include, setInclude] = useState<ShareInclude>({ loads: true, reps: true, duration: true, runs: true });
+  const [include, setInclude] = useState<ShareInclude>({ loads: true, reps: true, duration: true, runs: true, plan: false });
   const [caption, setCaption] = useState("");
   const [snap, setSnap] = useState<WorkoutSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,6 +80,20 @@ export function ShareWorkout({ sessionId, gym, unit, distUnit, sharedTo }: { ses
           <p className="mt-2 text-[12.5px] text-muted-foreground">Never included: notes, bodyweight, body measurements, starting energy and reasons for a shortened workout. Only completed working sets are shown.</p>
         </fieldset>
 
+        <fieldset>
+          <legend className="sr-only">Saving</legend>
+          <label className="flex min-h-14 items-start justify-between gap-3 rounded-md border bg-card p-3">
+            <span>
+              <span className="block text-[14px] font-semibold">Let viewers save the plan</span>
+              <span className="mt-0.5 block text-[12.5px] text-muted-foreground">
+                People who can see this post can keep an independent copy of the plan this workout followed (exercises, sets, rep targets, rest{include.loads ? ", prescribed loads" : ""}).
+                Copies stay theirs: deleting the post later doesn&apos;t remove them.
+              </span>
+            </span>
+            <Switch checked={!!include.plan} onCheckedChange={(v) => setInclude({ ...include, plan: v })} aria-label="Let viewers save the plan" />
+          </label>
+        </fieldset>
+
         <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={500} rows={3} placeholder="Add a caption (optional)" aria-label="Caption" />
       </div>
 
@@ -86,6 +101,7 @@ export function ShareWorkout({ sessionId, gym, unit, distUnit, sharedTo }: { ses
         <p className="mb-2 text-[15px] font-semibold">Preview</p>
         <div className="rounded-lg border bg-card p-4 shadow-card">
           {snap ? <SnapshotView snap={snap} unit={unit} distUnit={distUnit} /> : <p className="text-[13px] text-muted-foreground">Loading…</p>}
+          {snap?.plan && snap.plan.length > 0 && <PlanPreview plan={snap.plan} unit={unit} className="mt-3" />}
           {caption.trim() && <p className="mt-2.5 whitespace-pre-wrap text-[14px]">{caption.trim()}</p>}
         </div>
         <p className="mt-2 text-[12.5px] text-muted-foreground">This is exactly what will be posted. Later edits to the workout won&apos;t change it. Deleting the workout deletes the post.</p>

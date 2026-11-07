@@ -2,24 +2,24 @@
 // Community screens. Every screen takes its data as props so the pages stay thin and the
 // screens can be checked with fixture data.
 import { format } from "date-fns";
-import { BellOff, CalendarClock, Check, ChevronRight, Link2, MapPin, Plus, Search, Settings2, ShieldAlert, SquarePen, UserPlus } from "lucide-react";
+import { BellOff, CalendarClock, Check, ChevronRight, Clock, Link2, MapPin, MessageCircle, Pencil, Plus, Search, Settings2, ShieldAlert, SquarePen, SquarePlus, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { openConversation, type ConversationSummary } from "@/lib/data/messages";
-import { postBuddy, postOutcome, type Audience, type FeedPost } from "@/lib/data/posts";
+import { openConversation, type ConversationSummary, type UpcomingSession } from "@/lib/data/messages";
+import { feed, postBuddy, postOutcome, profilePosts, type Audience, type Comment, type FeedPost } from "@/lib/data/posts";
 import {
   cancelFriendRequest, createInvite, respondFriendRequest, sendFriendRequest, setDiscoverable, unblockUser,
   type Blocked, type Friend, type FriendRequest, type Membership, type Person,
 } from "@/lib/data/social";
 import type { DistanceUnit } from "@/lib/domain/running";
 import { browserZone, formatInZone, isValidZone, wallParts, zonedToUtc } from "@/lib/domain/schedule";
-import { gymLocation, requestMessage, requestSucceeded, type Gym, type Relation } from "@/lib/domain/social";
+import { gymLocation, interestLabel, requestMessage, requestSucceeded, type Gym, type SocialProfile } from "@/lib/domain/social";
 import type { WeightUnit } from "@/lib/domain/types";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -88,6 +88,9 @@ export type FeedScreenData = Units & {
   tab: "friends" | "gym"; unread: number; restricted: boolean;
   friends: Friend[]; incoming: FriendRequest[]; posts: FeedPost[];
   gym: Gym | null; membership: Membership | null; buddies: FeedPost[];
+  upcoming: UpcomingSession[];
+  /** Fixture previews only. */
+  previewComments?: Record<string, Comment[]>;
 };
 
 export function FeedScreen(d: FeedScreenData) {
@@ -99,45 +102,71 @@ export function FeedScreen(d: FeedScreenData) {
         { href: "/community?tab=gym", label: "My gym", on: d.tab === "gym" },
       ]} />
       {d.restricted && <RestrictedNote />}
+      {d.upcoming.length > 0 && <UpcomingSessions items={d.upcoming} />}
       {d.tab === "friends" ? <FriendsFeed {...d} /> : <GymFeed {...d} />}
     </div>
   );
 }
 
+/** Accepted sessions (and invitations waiting for an answer), each linking back to its conversation. */
+export function UpcomingSessions({ items }: { items: UpcomingSession[] }) {
+  return (
+    <section aria-labelledby="upcoming-h" className="mb-5">
+      <h2 id="upcoming-h" className="mb-2 text-[13px] font-semibold text-muted-foreground">Upcoming sessions</h2>
+      <Panel className="divide-y">
+        {items.map((i) => (
+          <Link key={i.id} href={`/community/messages/${i.conversation_id}`} className="flex min-h-16 items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/60 active:bg-muted">
+            <Avatar name={i.display_name} id={i.other_id} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[14.5px] font-semibold">
+                {i.awaiting_me ? `${i.display_name.split(" ")[0]} invited you to train` : `Training with ${i.display_name.split(" ")[0]}`}
+              </span>
+              <span className="block truncate text-[13px] text-muted-foreground">
+                <Local>{() => formatInZone(new Date(i.starts_at), i.time_zone)}</Local> · {i.gym_name}
+              </span>
+            </span>
+            {i.awaiting_me ? <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11.5px] font-semibold text-accent">Answer</span>
+              : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
+          </Link>
+        ))}
+      </Panel>
+    </section>
+  );
+}
+
 function FriendsFeed(d: FeedScreenData) {
+  const loadMore = useCallback((before: string) => feed(createClient(), "friends", before), []);
   return (
     <>
       {d.incoming.length > 0 && <RequestRows requests={d.incoming} className="mb-5" />}
       {d.friends.length > 0 && <FriendStrip friends={d.friends} />}
-      <FeedList key="friends" posts={d.posts} me={d.me} unit={d.unit} distUnit={d.distUnit} empty={
+      <FeedList key="friends" scrollKey="feed-friends" loadMore={loadMore} previewComments={d.previewComments} posts={d.posts} me={d.me} unit={d.unit} distUnit={d.distUnit} empty={
         d.friends.length === 0 ? (
-          <Empty title="Your feed starts with friends" className="py-14"
-            actions={<><Button asChild variant="primary" size="lg"><Link href="/community/find"><UserPlus /> Find friends</Link></Button><InviteFriendButton className="h-12 px-5" disabled={d.restricted} /></>}>
-            Add people you train with to see the workouts they share.
+          <Empty title="Your feed starts with friends"
+            actions={<><Button asChild variant="primary"><Link href="/community/find"><UserPlus /> Find friends</Link></Button><InviteFriendButton disabled={d.restricted} /></>}>
+            Add the people you train with.
           </Empty>
         ) : (
-          <Empty title="No posts yet" className="py-14"
-            actions={<Button asChild variant="primary"><Link href="/community/share">Share a workout</Link></Button>}>
-            Workouts your friends share show up here.
-          </Empty>
+          <Empty title="Nothing shared yet"
+            actions={<><Button asChild variant="primary"><Link href="/community/share"><SquarePlus /> Share a workout</Link></Button><InviteFriendButton disabled={d.restricted} /></>} />
         )
       } />
     </>
   );
 }
 
-/** Horizontal row of friends, like story avatars: tap to open a profile. */
+/** Horizontal row of friends: tap to open a profile. */
 function FriendStrip({ friends }: { friends: Friend[] }) {
   return (
-    <nav aria-label="Friends" className="-mx-4 mb-5 flex gap-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:px-0">
-      <Link href="/community/find" className="flex w-16 shrink-0 flex-col items-center gap-1.5">
-        <span className="grid size-[60px] place-items-center rounded-full border-2 border-dashed border-input text-muted-foreground"><Plus className="size-6" /></span>
-        <span className="w-full truncate text-center text-[12px] text-muted-foreground">Add</span>
+    <nav aria-label="Friends" className="-mx-4 mb-4 flex gap-3.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:px-0">
+      <Link href="/community/find" className="flex w-14 shrink-0 flex-col items-center gap-1">
+        <span className="grid size-12 place-items-center rounded-full border border-dashed border-input text-muted-foreground transition-colors hover:bg-muted"><Plus className="size-5" /></span>
+        <span className="w-full truncate text-center text-[11.5px] text-muted-foreground">Add</span>
       </Link>
       {friends.map((f) => (
-        <Link key={f.user_id} href={`/community/u/${f.user_id}`} className="flex w-16 shrink-0 flex-col items-center gap-1.5">
-          <span className="rounded-full p-[2px] ring-2 ring-accent/70"><Avatar name={f.display_name} id={f.user_id} className="size-[54px] text-[17px]" /></span>
-          <span className="w-full truncate text-center text-[12px]">{f.display_name.split(" ")[0]}</span>
+        <Link key={f.user_id} href={`/community/u/${f.user_id}`} className="flex w-14 shrink-0 flex-col items-center gap-1">
+          <Avatar name={f.display_name} id={f.user_id} className="size-12 text-[15px]" />
+          <span className="w-full truncate text-center text-[11.5px]">{f.display_name.split(" ")[0]}</span>
         </Link>
       ))}
     </nav>
@@ -151,15 +180,19 @@ function RequestRows({ requests, className }: { requests: FriendRequest[]; class
       <Panel className="divide-y">
         {requests.map((r) => r.direction === "incoming" ? (
           <div key={r.id} className="flex min-h-16 items-center gap-3 px-4 py-2.5">
-            <Avatar name={r.display_name} id={r.other_id} />
-            <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-semibold">{r.display_name}</span><span className="text-[13px] text-muted-foreground">Friend request</span></span>
+            <Link href={`/community/u/${r.other_id}`} className="flex min-w-0 flex-1 items-center gap-3">
+              <Avatar name={r.display_name} id={r.other_id} />
+              <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-semibold">{r.display_name}</span><span className="text-[13px] text-muted-foreground">Friend request</span></span>
+            </Link>
             <Button size="sm" variant="primary" className="h-10" disabled={busy === r.id} onClick={() => run(r.id, () => respondFriendRequest(createClient(), r.id, true))}>Accept</Button>
             <Button size="sm" variant="ghost" className="h-10" disabled={busy === r.id} onClick={() => run(r.id, () => respondFriendRequest(createClient(), r.id, false))}>Decline</Button>
           </div>
         ) : (
           <div key={r.id} className="flex min-h-16 items-center gap-3 px-4 py-2.5">
-            <Avatar name={r.display_name} id={r.other_id} />
-            <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-semibold">{r.display_name}</span><span className="text-[13px] text-muted-foreground">Request sent</span></span>
+            <Link href={`/community/u/${r.other_id}`} className="flex min-w-0 flex-1 items-center gap-3">
+              <Avatar name={r.display_name} id={r.other_id} />
+              <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-semibold">{r.display_name}</span><span className="text-[13px] text-muted-foreground">Pending</span></span>
+            </Link>
             <Button size="sm" variant="quiet" className="h-10" disabled={busy === r.id} onClick={() => run(r.id, () => cancelFriendRequest(createClient(), r.id))}>Cancel</Button>
           </div>
         ))}
@@ -195,6 +228,7 @@ function GymHeader({ gym, discoverable }: { gym: Gym; discoverable: boolean }) {
 
 function GymFeed(d: FeedScreenData) {
   const [buddyOpen, setBuddyOpen] = useState(false);
+  const loadMore = useCallback(async (before: string) => (await feed(createClient(), "gym", before)).filter((p) => p.kind === "workout"), []);
   if (!d.gym) return <ChooseGymRow />;
   const gym = d.gym;
   return (
@@ -202,16 +236,16 @@ function GymFeed(d: FeedScreenData) {
       <GymHeader gym={gym} discoverable={!!d.membership?.discoverable} />
       <div className="mb-5 grid grid-cols-2 gap-2">
         <Button asChild variant="secondary" className="h-11"><Link href="/community/find"><UserPlus /> People here</Link></Button>
-        <Button variant="secondary" className="h-11" disabled={d.restricted} onClick={() => setBuddyOpen(true)}><CalendarClock /> Find a buddy</Button>
+        <Button variant="secondary" className="h-11" disabled={d.restricted} onClick={() => setBuddyOpen(true)}><CalendarClock /> Find a partner</Button>
       </div>
       {d.buddies.length > 0 && (
         <section aria-labelledby="buddy-h" className="mb-6">
-          <h2 id="buddy-h" className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">Training sessions</h2>
+          <h2 id="buddy-h" className="mb-2 text-[13px] font-semibold text-muted-foreground">Training sessions</h2>
           <div className="space-y-4">{d.buddies.map((p) => <PostCard key={p.id} post={p} me={d.me} unit={d.unit} distUnit={d.distUnit} />)}</div>
         </section>
       )}
-      <FeedList key="gym" posts={d.posts} me={d.me} unit={d.unit} distUnit={d.distUnit} empty={
-        <Empty title={`Nothing shared at ${gym.name} yet`} actions={<Button asChild variant="primary"><Link href="/community/share">Share a workout</Link></Button>} />
+      <FeedList key="gym" scrollKey="feed-gym" loadMore={loadMore} posts={d.posts} me={d.me} unit={d.unit} distUnit={d.distUnit} empty={
+        <Empty title={`Nothing shared at ${gym.name} yet`} actions={<><Button asChild variant="primary"><Link href="/community/share"><SquarePlus /> Share a workout</Link></Button><Button asChild variant="outline"><Link href="/community/find"><UserPlus /> Find people</Link></Button></>} />
       } />
       <BuddySheet open={buddyOpen} onOpenChange={setBuddyOpen} gym={gym} />
     </>
@@ -241,7 +275,7 @@ export function BuddySheet({ open, onOpenChange, gym }: { open: boolean; onOpenC
     : "Only your friends";
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent title="Find a training buddy">
+      <SheetContent title="Find a training partner" description="Posts a time you plan to train. It does not create a workout.">
         <div className="space-y-3">
           {gym && (
             <div className="grid grid-cols-2 gap-1 rounded-lg bg-subtle p-1" role="radiogroup" aria-label="Who can see it">
@@ -270,25 +304,41 @@ export function BuddySheet({ open, onOpenChange, gym }: { open: boolean; onOpenC
   );
 }
 
+
 /* ------------------------------------------------------------------ Profile */
 
-export type MyProfileData = Units & {
-  name: string; tab: "posts" | "friends"; unread: number; restricted: boolean;
-  friends: Friend[]; requests: FriendRequest[]; blocked: Blocked[]; posts: FeedPost[]; gym: Gym | null;
-};
-
-function ProfileTop({ id, name, sub, children }: { id: string; name: string; sub: React.ReactNode; children?: React.ReactNode }) {
+/** Avatar, name, gym (only when its owner lets members find them), bio, interests and actions. */
+export function ProfileTop({ profile, sub, children }: { profile: SocialProfile; sub?: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <div className="mb-5 flex items-center gap-4">
-      <Avatar name={name} id={id} className="size-20 text-[26px] md:size-24 md:text-[30px]" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[21px] font-bold tracking-[-0.02em]">{name}</p>
-        <p className="mt-0.5 truncate text-[13.5px] text-muted-foreground">{sub}</p>
-        {children && <div className="mt-3 flex flex-wrap gap-2">{children}</div>}
+    <div className="mb-5">
+      <div className="flex items-center gap-4">
+        <Avatar name={profile.display_name} id={profile.id} photo={profile.avatar ?? null} className="size-20 text-[26px] md:size-24 md:text-[30px]" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[21px] font-bold tracking-[-0.02em]">{profile.display_name}</p>
+          {(sub || profile.gym) && (
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13.5px] text-muted-foreground">
+              {sub}
+              {sub && profile.gym && <span aria-hidden>·</span>}
+              {profile.gym && <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="size-3.5 shrink-0" /><span className="truncate">{profile.gym.name}</span></span>}
+            </p>
+          )}
+        </div>
       </div>
+      {profile.bio && <p className="mt-3 whitespace-pre-wrap break-words text-[14.5px] leading-snug">{profile.bio}</p>}
+      {profile.interests.length > 0 && (
+        <ul aria-label="Training interests" className="mt-2.5 flex flex-wrap gap-1.5">
+          {profile.interests.map((i) => <li key={i} className="rounded-full border px-2.5 py-1 text-[12.5px] font-medium text-muted-foreground">{interestLabel(i)}</li>)}
+        </ul>
+      )}
+      {children && <div className="mt-4 flex flex-wrap gap-2">{children}</div>}
     </div>
   );
 }
+
+export type MyProfileData = Units & {
+  profile: SocialProfile; tab: "posts" | "friends"; unread: number; restricted: boolean;
+  friends: Friend[]; requests: FriendRequest[]; blocked: Blocked[]; posts: FeedPost[]; gym: Gym | null;
+};
 
 export function MyProfileScreen(d: MyProfileData) {
   const { busy, setBusy } = useRun();
@@ -298,9 +348,10 @@ export function MyProfileScreen(d: MyProfileData) {
     <div className="mx-auto max-w-[600px]">
       <CommunityHeader title="Profile" back={{ href: "/community", label: "Back to Community" }} unread={d.unread} />
       {d.restricted && <RestrictedNote />}
-      <ProfileTop id={d.me} name={d.name} sub={<>{d.friends.length} {d.friends.length === 1 ? "friend" : "friends"}{d.gym ? ` · ${d.gym.name}` : ""}</>}>
+      <ProfileTop profile={d.profile} sub={<>{d.friends.length} {d.friends.length === 1 ? "friend" : "friends"}</>}>
+        <Button asChild variant="secondary" className="h-10"><Link href="/community/me/edit"><Pencil /> Edit profile</Link></Button>
         <InviteFriendButton variant="secondary" className="h-10" disabled={d.restricted} />
-        <Button asChild variant="secondary" className="h-10"><Link href="/community/gym"><MapPin /> {d.gym ? "Gym and visibility" : "Choose gym"}</Link></Button>
+        <Button asChild variant="quiet" className="h-10"><Link href="/community/gym"><MapPin /> {d.gym ? "Gym" : "Choose gym"}</Link></Button>
       </ProfileTop>
       {pending > 0 && <RequestRows requests={d.requests} className="mb-5" />}
       <Tabs items={[
@@ -308,15 +359,13 @@ export function MyProfileScreen(d: MyProfileData) {
         { href: "/community/me?tab=friends", label: `Friends${d.friends.length ? ` · ${d.friends.length}` : ""}`, on: d.tab === "friends" },
       ]} />
       {d.tab === "posts" ? (
-        <FeedList key="mine" posts={d.posts} me={d.me} unit={d.unit} distUnit={d.distUnit} empty={
-          <Empty title="No posts yet" actions={<Button asChild variant="primary"><Link href="/community/share">Share a workout</Link></Button>}>
-            You choose who sees each post when you share it.
-          </Empty>
+        <FeedList key="mine" scrollKey="profile-me" posts={d.posts} me={d.me} unit={d.unit} distUnit={d.distUnit} empty={
+          <Empty title="No posts yet" actions={<Button asChild variant="primary"><Link href="/community/share"><SquarePlus /> Share a workout</Link></Button>} />
         } />
       ) : (
         <>
           {d.friends.length === 0 ? (
-            <Empty title="No friends yet" actions={<Button asChild variant="primary"><Link href="/community/find"><UserPlus /> Find friends</Link></Button>} />
+            <Empty title="No friends yet" actions={<><Button asChild variant="primary"><Link href="/community/find"><UserPlus /> Find friends</Link></Button><InviteFriendButton disabled={d.restricted} /></>} />
           ) : (
             <Panel className="divide-y">
               {d.friends.map((f) => (
@@ -361,37 +410,48 @@ function BlockedList({ blocked }: { blocked: Blocked[] }) {
 }
 
 export type PersonProfileData = Units & {
-  person: { id: string; name: string; relation: Relation; requestId?: string };
-  unread: number; restricted: boolean; posts: FeedPost[]; gymName: string | null;
+  profile: SocialProfile; unread: number; restricted: boolean; posts: FeedPost[];
 };
 
 export function PersonProfileScreen(d: PersonProfileData) {
   const router = useRouter();
   const { busy, setBusy, run } = useRun();
-  const p = d.person;
+  const p = d.profile;
+  const first = p.display_name.split(" ")[0];
   const friends = p.relation === "friends";
-  const sub = friends ? "Friends" : p.relation === "request_sent" ? "Request sent" : p.relation === "request_received" ? "Wants to be friends" : d.gymName ? `Trains at ${d.gymName}` : "";
+  const loadMore = useCallback((before: string) => profilePosts(createClient(), p.id, before), [p.id]);
+  const openChat = async (invite = false) => {
+    setBusy("msg");
+    try { router.push(`/community/messages/${await openConversation(createClient(), p.id)}${invite ? "?invite=1" : ""}`); }
+    catch (e) { toast.error((e as Error).message); setBusy(null); }
+  };
   return (
     <div className="mx-auto max-w-[600px]">
-      <CommunityHeader title={p.name} back={{ href: "/community", label: "Back to Community" }} unread={d.unread}
-        actions={<PersonMenu userId={p.id} name={p.name} isFriend={friends} onChanged={() => router.push("/community")} />} />
-      <ProfileTop id={p.id} name={p.name} sub={sub}>
+      <CommunityHeader title={p.display_name} back={{ href: "/community", label: "Back to Community" }} unread={d.unread}
+        actions={<PersonMenu userId={p.id} name={p.display_name} isFriend={friends} onChanged={() => router.push("/community")} />} />
+      <ProfileTop profile={p} sub={friends ? "Friends" : p.relation === "request_received" ? "Wants to be friends" : undefined}>
         {friends ? (
-          <Button variant="primary" className="h-10 px-6" disabled={busy === "msg" || d.restricted}
-            onClick={async () => { setBusy("msg"); try { router.push(`/community/messages/${await openConversation(createClient(), p.id)}`); } catch (e) { toast.error((e as Error).message); setBusy(null); } }}>
-            Message
-          </Button>
-        ) : p.relation === "request_received" && p.requestId ? (
           <>
-            <Button variant="primary" className="h-10" disabled={busy === p.requestId} onClick={() => run(p.requestId!, () => respondFriendRequest(createClient(), p.requestId!, true))}>Accept</Button>
-            <Button variant="secondary" className="h-10" disabled={busy === p.requestId} onClick={() => run(p.requestId!, () => respondFriendRequest(createClient(), p.requestId!, false))}>Decline</Button>
+            <Button variant="primary" className="h-10 px-5" disabled={busy === "msg" || !p.can_message} onClick={() => openChat()}><MessageCircle /> Message</Button>
+            <Button variant="secondary" className="h-10" disabled={busy === "msg" || !p.can_message} onClick={() => openChat(true)}><CalendarClock /> Invite to train</Button>
           </>
-        ) : p.relation === "none" ? (
+        ) : p.relation === "request_received" && p.incoming_request_id ? (
+          <>
+            <Button variant="primary" className="h-10" disabled={busy === p.incoming_request_id} onClick={() => run(p.incoming_request_id!, () => respondFriendRequest(createClient(), p.incoming_request_id!, true))}>Accept</Button>
+            <Button variant="secondary" className="h-10" disabled={busy === p.incoming_request_id} onClick={() => run(p.incoming_request_id!, () => respondFriendRequest(createClient(), p.incoming_request_id!, false))}>Decline</Button>
+          </>
+        ) : p.relation === "request_sent" && p.outgoing_request_id ? (
+          <Button variant="secondary" className="h-10" disabled={busy === p.outgoing_request_id} aria-label="Pending. Cancel friend request"
+            onClick={() => { if (confirm(`Cancel your friend request to ${first}?`)) void run(p.outgoing_request_id!, () => cancelFriendRequest(createClient(), p.outgoing_request_id!)); }}>
+            <Clock /> Pending
+          </Button>
+        ) : p.can_request ? (
           <Button variant="primary" className="h-10" disabled={busy === p.id || d.restricted} onClick={() => run(p.id, () => sendFriendRequest(createClient(), p.id))}><UserPlus /> Add friend</Button>
         ) : null}
       </ProfileTop>
-      <FeedList key={p.id} posts={d.posts} me={d.me} unit={d.unit} distUnit={d.distUnit} empty={
-        <Empty title="No posts to show">{friends ? `${p.name.split(" ")[0]} hasn't shared anything with you yet.` : "Become friends to see what they share with friends."}</Empty>
+      <h2 className="mb-3 border-b pb-2 text-[13px] font-semibold text-muted-foreground">Posts</h2>
+      <FeedList key={p.id} scrollKey={`profile-${p.id}`} posts={d.posts} me={d.me} unit={d.unit} distUnit={d.distUnit} loadMore={loadMore} empty={
+        <Empty title="No posts to show">{friends ? `${first} hasn't shared anything with you yet.` : "Only posts shared with you appear here."}</Empty>
       } />
     </div>
   );
@@ -419,7 +479,7 @@ export function InboxScreen({ conversations, friends, requests, unread, restrict
   );
   return (
     <div className="mx-auto max-w-[600px]">
-      <CommunityHeader title="Inbox" back={{ href: "/community", label: "Back to Community" }} unread={unread} showNav={false} actions={newBtn} />
+      <CommunityHeader title="Messages" back={{ href: "/community", label: "Back to Community" }} unread={unread} showNav={false} actions={newBtn} />
       {restricted && <RestrictedNote />}
       {requests > 0 && (
         <Link href="/community/me" className="mb-4 flex min-h-14 items-center gap-3 rounded-lg border bg-card px-4 shadow-card hover:bg-muted/60">

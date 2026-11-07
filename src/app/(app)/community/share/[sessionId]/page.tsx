@@ -20,7 +20,6 @@ export default async function SharePage({ params }: { params: Promise<{ sessionI
   return (
     <>
       <CommunityHeader title="Share workout" back={{ href: "/community/share", label: "Back" }} showNav={false} />
-      <p className="-mt-2 mb-5 text-[14px] text-muted-foreground">Your workout stays private. Sharing posts a separate copy, exactly as previewed.</p>
       <ShareWorkout sessionId={sessionId} gym={mine.gym} unit={profile.unit} distUnit={distanceUnit(profile)} sharedTo={existing.map((e) => e.audience)} />
     </>
   );

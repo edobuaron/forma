@@ -6,8 +6,9 @@ import { requireUser } from "@/lib/supabase/server";
 
 export const metadata = { title: "Conversation" };
 
-export default async function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ConversationPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ invite?: string }> }) {
   const { id } = await params;
+  const openInvite = (await searchParams).invite === "1";
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const { supabase, user } = await requireUser();
   const info = await conversationInfo(supabase, id);
@@ -27,6 +28,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       initialInvites={invites}
       myGym={mine.gym}
       workoutNames={Array.from(new Set(templates.map((t) => t.name)))}
+      openInvite={openInvite}
     />
   );
 }
